@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>5DOF SCARA Robot Control</title>
+    <style>
+        :root {
+            --primary: #4361ee;
+            --primary-light: #4895ef;
+            --primary-dark: #3f37c9;
+            --success: #4cc9f0;
+            --danger: #f72585;
+            --warning: #f8961e;
+            --light: #f8f9fa;
+            --dark: #212529;
+            --gray: #6c757d;
+            --card-shadow: 0 4px 6px rgba(0,0,0,0.1), 0 1px 3px rgba(0,0,0,0.08);
+            --transition: all 0.3s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: #f0f5ff;
+            padding: 20px;
+            color: var(--dark);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 24px;
+        }
+
+        @media (min-width: 768px) {
+            .container {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        .header {
+            grid-column: 1 / -1;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .card {
+            background: white;
+            padding: 24px;
+            border-radius: 16px;
+            box-shadow: var(--card-shadow);
+        }
+
+        h1 {
+            color: var(--primary-dark);
+            margin-bottom: 12px;
+            font-size: 2.5rem;
+            font-weight: 700;
+        }
+
+        h2 {
+            color: var(--primary);
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            font-weight: 600;
+            position: relative;
+            padding-bottom: 8px;
+        }
+
+        h2::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 3px;
+            width: 60px;
+            background: var(--primary-light);
+            border-radius: 3px;
+        }
+
+        h3 {
+            color: var(--dark);
+            margin: 16px 0 12px;
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--gray);
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        input[type="number"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5eb;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            font-size: 1rem;
+            transition: var(--transition);
+            background-color: var(--light);
+        }
+
+        input[type="number"]:focus {
+            outline: none;
+            border-color: var(--primary-light);
+            box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.15);
+        }
+
+        .btn {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: var(--transition);
+            margin-right: 12px;
+            margin-bottom: 12px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn:hover {
+            background-color: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+
+        .btn-success {
+            background-color: var(--success);
+        }
+
+        .btn-success:hover {
+            background-color: #3db9e0;
+        }
+
+        .btn-danger {
+            background-color: var(--danger);
+        }
+
+        .btn-danger:hover {
+            background-color: #e61a76;
+        }
+
+        .status {
+            padding: 12px 16px;
+            margin-top: 16px;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+            font-size: 0.95rem;
+            border-left: 4px solid var(--gray);
+            transition: var(--transition);
+        }
+
+        .status.success {
+            color: #0d6efd;
+            background-color: #e6f2ff;
+            border-left-color: #0d6efd;
+        }
+
+        .status.error {
+            color: #dc3545;
+            background-color: #f8d7da;
+            border-left-color: #dc3545;
+        }
+
+        .angles-display {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .angle-item {
+            background-color: #f8f9fa;
+            padding: 14px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 500;
+            border: 1px solid #e9ecef;
+            transition: var(--transition);
+        }
+
+        .angle-item:hover {
+            background-color: #e9f5ff;
+            border-color: #c5e1ff;
+        }
+
+        .angle-value {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--primary);
+            margin-top: 4px;
+        }
+
+        .gripper-controls {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .toggle-button {
+            padding: 12px 24px;
+            width: 160px;
+        }
+
+        .toggle-button.open {
+            background-color: var(--success);
+        }
+
+        .toggle-button.open:hover {
+            background-color: #3db9e0;
+        }
+
+        .toggle-button.closed {
+            background-color: var(--danger);
+        }
+
+        .toggle-button.closed:hover {
+            background-color: #e61a76;
+        }
+        
+        .robot-image {
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        .robot-image img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-top: 12px;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .card-icon {
+            margin-right: 12px;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: var(--primary-light);
+            color: white;
+            border-radius: 8px;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .angle-adjuster {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .btn-small {
+            padding: 4px 8px;
+            font-size: 0.9rem;
+            min-width: 30px;
+        }
+
+        .angle-adjuster input {
+            text-align: center;
+            padding: 4px;
+            font-size: 0.9rem;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .angles-display {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>5DOF SCARA Robot Control Panel</h1>
+            <p>Configure and control robot position, joint angles, and gripper in real-time</p>
+        </div>
+
+        <!-- Position Control -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon">P</div>
+                <h2>Position Control</h2>
+            </div>
+            
+            <div class="input-group">
+                <label for="x">X Position (cm):</label>
+                <input type="number" id="x" step="0.1" value="20">
+                
+                <label for="y">Y Position (cm):</label>
+                <input type="number" id="y" step="0.1" value="0">
+                
+                <label for="z">Z Position (cm):</label>
+                <input type="number" id="z" step="0.1" value="10">
+                
+                <button onclick="updatePosition()" class="btn">Update Position</button>
+            </div>
+            <div id="position-status" class="status"></div>
+            
+            <h3>Joint Angles</h3>
+            <div class="angles-display">
+                <div class="angle-item">
+                    θ1
+                    <div class="angle-value"><span id="theta1">0</span>°</div>
+                    <div class="angle-adjuster">
+                        <button class="btn btn-small" onclick="adjustAngle('theta1', -1)">-</button>
+                        <input type="number" id="theta1_adj" value="1" min="0.1" max="10" step="0.1" style="width: 60px;">
+                        <button class="btn btn-small" onclick="adjustAngle('theta1', 1)">+</button>
+                    </div>
+                </div>
+                <div class="angle-item">
+                    θ2
+                    <div class="angle-value"><span id="theta2">0</span>°</div>
+                    <div class="angle-adjuster">
+                        <button class="btn btn-small" onclick="adjustAngle('theta2', -1)">-</button>
+                        <input type="number" id="theta2_adj" value="1" min="0.1" max="10" step="0.1" style="width: 60px;">
+                        <button class="btn btn-small" onclick="adjustAngle('theta2', 1)">+</button>
+                    </div>
+                </div>
+                <div class="angle-item">
+                    θ3
+                    <div class="angle-value"><span id="theta3">0</span>°</div>
+                    <div class="angle-adjuster">
+                        <button class="btn btn-small" onclick="adjustAngle('theta3', -1)">-</button>
+                        <input type="number" id="theta3_adj" value="1" min="0.1" max="10" step="0.1" style="width: 60px;">
+                        <button class="btn btn-small" onclick="adjustAngle('theta3', 1)">+</button>
+                    </div>
+                </div>
+                <div class="angle-item">
+                    θ4
+                    <div class="angle-value"><span id="theta4">0</span>°</div>
+                    <div class="angle-adjuster">
+                        <button class="btn btn-small" onclick="adjustAngle('theta4', -1)">-</button>
+                        <input type="number" id="theta4_adj" value="1" min="0.1" max="10" step="0.1" style="width: 60px;">
+                        <button class="btn btn-small" onclick="adjustAngle('theta4', 1)">+</button>
+                    </div>
+                </div>
+                <div class="angle-item">
+                    D
+                    <div class="angle-value"><span id="d">0</span> cm</div>
+                    <div class="angle-adjuster">
+                        <button class="btn btn-small" onclick="adjustAngle('d', -1)">-</button>
+                        <input type="number" id="d_adj" value="1" min="0.1" max="10" step="0.1" style="width: 60px;">
+                        <button class="btn btn-small" onclick="adjustAngle('d', 1)">+</button>
+                    </div>
+                </div>
+                <div class="angle-item">
+                    Gripper
+                    <div class="angle-value"><span id="gripper_angle">0</span>°</div>
+                    <div class="angle-adjuster">
+                        <button class="btn btn-small" onclick="adjustAngle('gripper_angle', -1)">-</button>
+                        <input type="number" id="gripper_angle_adj" value="1" min="0.1" max="10" step="0.1" style="width: 60px;">
+                        <button class="btn btn-small" onclick="adjustAngle('gripper_angle', 1)">+</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gripper Controls -->
+            <div class="gripper-controls">
+                <h3>Gripper Control</h3>
+                <div class="input-group">
+                    <label for="gripper_rotation">Gripper Rotation (degrees):</label>
+                    <input type="number" id="gripper_rotation" step="1" value="0" min="-180" max="180">
+                    
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                        <button onclick="updateGripperRotation()" class="btn btn-success">Update Rotation</button>
+                        <button id="gripperToggle" onclick="toggleGripper()" class="btn toggle-button open">Open Gripper</button>
+                    </div>
+                </div>
+                <div id="gripper-status" class="status"></div>
+            </div>
+        </div>
+
+        <!-- Arm Configuration -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon">C</div>
+                <h2>Arm Configuration</h2>
+            </div>
+            
+            <div class="input-group">
+                <label for="link1">Link 1 Length (cm):</label>
+                <input type="number" id="link1" step="0.1" value="20">
+                
+                <label for="link2">Link 2 Length (cm):</label>
+                <input type="number" id="link2" step="0.1" value="15">
+                
+                <label for="link3">Link 3 Length (cm):</label>
+                <input type="number" id="link3" step="0.1" value="15">
+                
+                <label for="link4">Link 4 Length (cm):</label>
+                <input type="number" id="link4" step="0.1" value="10">
+                
+                <button onclick="updateConfiguration()" class="btn">Update Configuration</button>
+            </div>
+            <div id="config-status" class="status"></div>
+            
+            <div class="robot-image">
+                <h3>Robot Configuration Diagram</h3>
+                <img src="static/scara.png" alt="SCARA Robot Configuration">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let isGripperOpen = true;
+
+        async function updatePosition() {
+            const x = parseFloat(document.getElementById('x').value);
+            const y = parseFloat(document.getElementById('y').value);
+            const z = parseFloat(document.getElementById('z').value);
+
+            try {
+                const response = await fetch('/update_position', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ x, y, z })
+                });
+
+                const data = await response.json();
+                const statusElement = document.getElementById('position-status');
+                statusElement.textContent = data.status;
+                statusElement.className = 'status ' + (response.ok ? 'success' : 'error');
+
+                if (data.angles) {
+                    document.getElementById('theta1').textContent = data.angles.theta1.toFixed(2);
+                    document.getElementById('theta2').textContent = data.angles.theta2.toFixed(2);
+                    document.getElementById('theta3').textContent = data.angles.theta3.toFixed(2);
+                    document.getElementById('theta4').textContent = data.angles.theta4.toFixed(2);
+                    document.getElementById('d').textContent = data.angles.d.toFixed(2);
+                    document.getElementById('gripper_angle').textContent = data.angles.gripper_angle.toFixed(2);
+                    updateGripperButton(data.angles.is_gripper_open);
+                }
+            } catch (error) {
+                document.getElementById('position-status').textContent = 'Error: ' + error.message;
+                document.getElementById('position-status').className = 'status error';
+            }
+        }
+
+        async function updateConfiguration() {
+            const link1 = document.getElementById('link1').value;
+            const link2 = document.getElementById('link2').value;
+            const link3 = document.getElementById('link3').value;
+            const link4 = document.getElementById('link4').value;
+
+            try {
+                const response = await fetch('/update_configuration', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ link1, link2, link3, link4 })
+                });
+
+                const data = await response.json();
+                const statusElement = document.getElementById('config-status');
+                statusElement.textContent = data.status;
+                statusElement.className = 'status ' + (response.ok ? 'success' : 'error');
+            } catch (error) {
+                document.getElementById('config-status').textContent = 'Error: ' + error.message;
+                document.getElementById('config-status').className = 'status error';
+            }
+        }
+
+        async function updateGripperRotation() {
+            const angle = parseFloat(document.getElementById('gripper_rotation').value);
+
+            try {
+                const response = await fetch('/update_gripper_rotation', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ angle })
+                });
+
+                const data = await response.json();
+                const statusElement = document.getElementById('gripper-status');
+                statusElement.textContent = data.status;
+                statusElement.className = 'status ' + (response.ok ? 'success' : 'error');
+                
+                document.getElementById('gripper_angle').textContent = data.gripper_angle.toFixed(2);
+            } catch (error) {
+                document.getElementById('gripper-status').textContent = 'Error: ' + error.message;
+                document.getElementById('gripper-status').className = 'status error';
+            }
+        }
+
+        async function toggleGripper() {
+            isGripperOpen = !isGripperOpen;
+            
+            try {
+                const response = await fetch('/toggle_gripper', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ is_open: isGripperOpen })
+                });
+
+                const data = await response.json();
+                const statusElement = document.getElementById('gripper-status');
+                statusElement.textContent = data.status;
+                statusElement.className = 'status ' + (response.ok ? 'success' : 'error');
+                
+                updateGripperButton(data.is_gripper_open);
+            } catch (error) {
+                document.getElementById('gripper-status').textContent = 'Error: ' + error.message;
+                document.getElementById('gripper-status').className = 'status error';
+            }
+        }
+
+        function updateGripperButton(isOpen) {
+            const button = document.getElementById('gripperToggle');
+            button.textContent = isOpen ? 'Close Gripper' : 'Open Gripper';
+            button.className = 'btn toggle-button ' + (isOpen ? 'open' : 'closed');
+            isGripperOpen = isOpen;
+        }
+
+        async function adjustAngle(angleId, direction) {
+            const currentValue = parseFloat(document.getElementById(angleId).textContent);
+            const stepSize = parseFloat(document.getElementById(angleId + '_adj').value);
+            const newValue = currentValue + (direction * stepSize);
+
+            // Update the display
+            document.getElementById(angleId).textContent = newValue.toFixed(2);
+
+            // If it's the gripper angle, update through the gripper rotation endpoint
+            if (angleId === 'gripper_angle') {
+                try {
+                    const response = await fetch('/update_gripper_rotation', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ angle: newValue })
+                    });
+
+                    const data = await response.json();
+                    const statusElement = document.getElementById('gripper-status');
+                    statusElement.textContent = data.status;
+                    statusElement.className = 'status ' + (response.ok ? 'success' : 'error');
+                } catch (error) {
+                    document.getElementById('gripper-status').textContent = 'Error: ' + error.message;
+                    document.getElementById('gripper-status').className = 'status error';
+                }
+            } else {
+                // For other angles, use the update_angle endpoint
+                try {
+                    const response = await fetch('/update_angle', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ 
+                            angle_id: angleId,
+                            value: newValue
+                        })
+                    });
+
+                    const data = await response.json();
+                    const statusElement = document.getElementById('position-status');
+                    statusElement.textContent = data.status;
+                    statusElement.className = 'status ' + (response.ok ? 'success' : 'error');
+
+                    // Update all angles from the response
+                    if (data.angles) {
+                        document.getElementById('theta1').textContent = data.angles.theta1.toFixed(2);
+                        document.getElementById('theta2').textContent = data.angles.theta2.toFixed(2);
+                        document.getElementById('theta3').textContent = data.angles.theta3.toFixed(2);
+                        document.getElementById('theta4').textContent = data.angles.theta4.toFixed(2);
+                        document.getElementById('d').textContent = data.angles.d.toFixed(2);
+                        document.getElementById('gripper_angle').textContent = data.angles.gripper_angle.toFixed(2);
+                    }
+                } catch (error) {
+                    document.getElementById('position-status').textContent = 'Error: ' + error.message;
+                    document.getElementById('position-status').className = 'status error';
+                }
+            }
+        }
+    </script>
+</body>
+</html>
