@@ -183,3 +183,6 @@ def update_angle():
 
 if __name__ == '__main__':
     app.run(debug=True) 
+
+# how to run the code
+# python robot_control.py
