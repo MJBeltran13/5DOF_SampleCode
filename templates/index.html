@@ -302,13 +302,178 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        /* Serial Monitor Styles */
+        .serial-monitor {
+            grid-column: 1 / -1;
+            background: #1e1e1e;
+            color: #fff;
+            padding: 20px;
+            border-radius: 16px;
+            font-family: 'Consolas', monospace;
+            height: 300px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+
+        .serial-monitor .message {
+            margin: 5px 0;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .serial-monitor .timestamp {
+            color: #888;
+            margin-right: 10px;
+        }
+
+        .serial-monitor .sent {
+            color: #4cc9f0;
+        }
+
+        .serial-monitor .received {
+            color: #4ade80;
+        }
+
+        .serial-monitor .system {
+            color: #fb923c;
+        }
+
+        .monitor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .monitor-header h2 {
+            margin: 0;
+            color: #fff;
+        }
+
+        .monitor-header button {
+            background: #2d2d2d;
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .monitor-header button:hover {
+            background: #3d3d3d;
+        }
+
+        /* Serial Configuration Styles */
+        .serial-config {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .serial-config select {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            background: #fff;
+            min-width: 120px;
+        }
+
+        .connection-status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-left: 10px;
+        }
+
+        .connection-status.connected {
+            background: #22c55e;
+            color: white;
+        }
+
+        .connection-status.disconnected {
+            background: #ef4444;
+            color: white;
+        }
+
+        .refresh-button {
+            padding: 8px;
+            background: #4b5563;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .refresh-button:hover {
+            background: #374151;
+        }
+
+        /* Connection Button Styles */
+        .btn-connect {
+            background-color: var(--success);
+        }
+        
+        .btn-connect:hover {
+            background-color: #3db9e0;
+        }
+        
+        .btn-disconnect {
+            background-color: var(--danger);
+        }
+        
+        .btn-disconnect:hover {
+            background-color: #e61a76;
+        }
+
+        /* Disable port selection when connected */
+        .serial-config select:disabled {
+            background-color: #f3f4f6;
+            cursor: not-allowed;
+        }
+
+        .current-position {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+
+        .position-display {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .position-item {
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            text-align: center;
+            border: 1px solid #e9ecef;
+        }
+
+        .position-item span:first-child {
+            color: #6c757d;
+            margin-right: 5px;
+        }
+
+        .position-item span:last-child {
+            font-weight: bold;
+            color: var(--primary);
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>5DOF SCARA Robot Control Panel</h1>
-            <p>Configure and control robot position, joint angles, and gripper in real-time</p>
+            <p>Control robot position, Z-axis, Yaw, and gripper</p>
         </div>
 
         <!-- Position Control -->
@@ -319,131 +484,133 @@
             </div>
             
             <div class="input-group">
-                <label for="x">X Position (cm):</label>
-                <input type="number" id="x" step="0.1" value="20">
+                <h3>XY Position Control</h3>
+                <label for="x">X Position (mm):</label>
+                <input type="number" id="x" step="1" value="100">
                 
-                <label for="y">Y Position (cm):</label>
-                <input type="number" id="y" step="0.1" value="0">
+                <label for="y">Y Position (mm):</label>
+                <input type="number" id="y" step="1" value="0">
                 
-                <label for="z">Z Position (cm):</label>
-                <input type="number" id="z" step="0.1" value="10">
-                
-                <button onclick="updatePosition()" class="btn">Update Position</button>
+                <button onclick="updatePosition()" class="btn">Move to Position</button>
             </div>
+
+            <div class="input-group">
+                <h3>Direct Angle Control</h3>
+                <label for="angle1">Elbow Angle (degrees):</label>
+                <input type="number" id="angle1" step="1" value="90" min="30" max="150">
+                
+                <label for="angle2">Base Angle (degrees):</label>
+                <input type="number" id="angle2" step="1" value="90" min="30" max="150">
+                
+                <button onclick="updateAngles()" class="btn">Set Angles</button>
+            </div>
+
             <div id="position-status" class="status"></div>
+
+            <!-- Current Position Display -->
+            <div class="current-position">
+                <h3>Current Position</h3>
+                <div class="position-display">
+                    <div class="position-item">
+                        <span>X:</span>
+                        <span id="current-x">0</span> mm
+                    </div>
+                    <div class="position-item">
+                        <span>Y:</span>
+                        <span id="current-y">0</span> mm
+                    </div>
+                    <div class="position-item">
+                        <span>Angle 1:</span>
+                        <span id="current-angle1">90</span>°
+                    </div>
+                    <div class="position-item">
+                        <span>Angle 2:</span>
+                        <span id="current-angle2">90</span>°
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Z-Axis and Yaw Control -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon">Z</div>
+                <h2>Z-Axis and Yaw Control</h2>
+            </div>
             
-            <h3>Joint Angles</h3>
-            <div class="angles-display">
-                <div class="angle-item">
-                    θ1
-                    <div class="angle-value"><span id="theta1">0</span>°</div>
-                    <div class="angle-adjuster">
-                        <button class="btn btn-small" onclick="adjustAngle('theta1', -1)">-</button>
-                        <input type="number" id="theta1_adj" value="1" min="0.1" max="10" step="0.1" style="width: 60px;">
-                        <button class="btn btn-small" onclick="adjustAngle('theta1', 1)">+</button>
-                    </div>
-                </div>
-                <div class="angle-item">
-                    θ2
-                    <div class="angle-value"><span id="theta2">0</span>°</div>
-                    <div class="angle-adjuster">
-                        <button class="btn btn-small" onclick="adjustAngle('theta2', -1)">-</button>
-                        <input type="number" id="theta2_adj" value="1" min="0.1" max="10" step="0.1" style="width: 60px;">
-                        <button class="btn btn-small" onclick="adjustAngle('theta2', 1)">+</button>
-                    </div>
-                </div>
-                <div class="angle-item">
-                    θ3
-                    <div class="angle-value"><span id="theta3">0</span>°</div>
-                    <div class="angle-adjuster">
-                        <button class="btn btn-small" onclick="adjustAngle('theta3', -1)">-</button>
-                        <input type="number" id="theta3_adj" value="1" min="0.1" max="10" step="0.1" style="width: 60px;">
-                        <button class="btn btn-small" onclick="adjustAngle('theta3', 1)">+</button>
-                    </div>
-                </div>
-                <div class="angle-item">
-                    θ4
-                    <div class="angle-value"><span id="theta4">0</span>°</div>
-                    <div class="angle-adjuster">
-                        <button class="btn btn-small" onclick="adjustAngle('theta4', -1)">-</button>
-                        <input type="number" id="theta4_adj" value="1" min="0.1" max="10" step="0.1" style="width: 60px;">
-                        <button class="btn btn-small" onclick="adjustAngle('theta4', 1)">+</button>
-                    </div>
-                </div>
-                <div class="angle-item">
-                    D
-                    <div class="angle-value"><span id="d">0</span> cm</div>
-                    <div class="angle-adjuster">
-                        <button class="btn btn-small" onclick="adjustAngle('d', -1)">-</button>
-                        <input type="number" id="d_adj" value="1" min="0.1" max="10" step="0.1" style="width: 60px;">
-                        <button class="btn btn-small" onclick="adjustAngle('d', 1)">+</button>
-                    </div>
-                </div>
-                <div class="angle-item">
-                    Gripper
-                    <div class="angle-value"><span id="gripper_angle">0</span>°</div>
-                    <div class="angle-adjuster">
-                        <button class="btn btn-small" onclick="adjustAngle('gripper_angle', -1)">-</button>
-                        <input type="number" id="gripper_angle_adj" value="1" min="0.1" max="10" step="0.1" style="width: 60px;">
-                        <button class="btn btn-small" onclick="adjustAngle('gripper_angle', 1)">+</button>
-                    </div>
+            <div class="input-group">
+                <h3>Z-Axis Control</h3>
+                <label for="z_steps">Z Movement Steps:</label>
+                <input type="number" id="z_steps" step="100" value="100">
+                
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="moveZ(1)" class="btn btn-success">Move Up</button>
+                    <button onclick="moveZ(-1)" class="btn btn-danger">Move Down</button>
                 </div>
             </div>
 
-            <!-- Gripper Controls -->
+            <div class="input-group">
+                <h3>Yaw Control</h3>
+                <label for="yaw_steps">Yaw Movement Steps:</label>
+                <input type="number" id="yaw_steps" step="100" value="100">
+                
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="moveYaw(-1)" class="btn btn-success">Rotate Left</button>
+                    <button onclick="moveYaw(1)" class="btn btn-danger">Rotate Right</button>
+                </div>
+            </div>
+
+            <div id="z-yaw-status" class="status"></div>
+
+            <!-- Gripper Control -->
             <div class="gripper-controls">
                 <h3>Gripper Control</h3>
-                <div class="input-group">
-                    <label for="gripper_rotation">Gripper Rotation (degrees):</label>
-                    <input type="number" id="gripper_rotation" step="1" value="0" min="-180" max="180">
-                    
-                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
-                        <button onclick="updateGripperRotation()" class="btn btn-success">Update Rotation</button>
-                        <button id="gripperToggle" onclick="toggleGripper()" class="btn toggle-button open">Open Gripper</button>
-                    </div>
-                </div>
+                <button id="gripperToggle" onclick="toggleGripper()" class="btn toggle-button open">Open Gripper</button>
                 <div id="gripper-status" class="status"></div>
             </div>
         </div>
 
-        <!-- Arm Configuration -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-icon">C</div>
-                <h2>Arm Configuration</h2>
+        <!-- Serial Monitor with Configuration -->
+        <div class="serial-monitor card">
+            <div class="monitor-header">
+                <h2>Serial Monitor</h2>
+                <div class="serial-config">
+                    <select id="com-port"></select>
+                    <select id="baudrate"></select>
+                    <button id="connectButton" onclick="updateSerialSettings()" class="btn btn-connect">Connect</button>
+                    <button id="disconnectButton" onclick="disconnectSerial()" class="btn btn-disconnect" style="display: none;">Disconnect</button>
+                    <button onclick="refreshPorts()" class="refresh-button">⟳</button>
+                    <span id="connection-status" class="connection-status"></span>
+                </div>
+                <button onclick="clearSerialMonitor()">Clear</button>
             </div>
-            
-            <div class="input-group">
-                <label for="link1">Link 1 Length (cm):</label>
-                <input type="number" id="link1" step="0.1" value="20">
-                
-                <label for="link2">Link 2 Length (cm):</label>
-                <input type="number" id="link2" step="0.1" value="15">
-                
-                <label for="link3">Link 3 Length (cm):</label>
-                <input type="number" id="link3" step="0.1" value="15">
-                
-                <label for="link4">Link 4 Length (cm):</label>
-                <input type="number" id="link4" step="0.1" value="10">
-                
-                <button onclick="updateConfiguration()" class="btn">Update Configuration</button>
-            </div>
-            <div id="config-status" class="status"></div>
-            
-            <div class="robot-image">
-                <h3>Robot Configuration Diagram</h3>
-                <img src="static/scara.png" alt="SCARA Robot Configuration">
-            </div>
+            <div id="serial-output"></div>
         </div>
     </div>
 
     <script>
         let isGripperOpen = true;
 
+        function updatePositionDisplay(position, angles) {
+            if (position) {
+                document.getElementById('current-x').textContent = position.x;
+                document.getElementById('current-y').textContent = position.y;
+                // Update input fields too
+                document.getElementById('x').value = position.x;
+                document.getElementById('y').value = position.y;
+            }
+            if (angles) {
+                document.getElementById('current-angle1').textContent = angles.angle1;
+                document.getElementById('current-angle2').textContent = angles.angle2;
+                // Update input fields too
+                document.getElementById('angle1').value = angles.angle1;
+                document.getElementById('angle2').value = angles.angle2;
+            }
+        }
+
         async function updatePosition() {
             const x = parseFloat(document.getElementById('x').value);
             const y = parseFloat(document.getElementById('y').value);
-            const z = parseFloat(document.getElementById('z').value);
 
             try {
                 const response = await fetch('/update_position', {
@@ -451,75 +618,111 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ x, y, z })
+                    body: JSON.stringify({ x, y })
                 });
 
                 const data = await response.json();
                 const statusElement = document.getElementById('position-status');
-                statusElement.textContent = data.status;
-                statusElement.className = 'status ' + (response.ok ? 'success' : 'error');
-
-                if (data.angles) {
-                    document.getElementById('theta1').textContent = data.angles.theta1.toFixed(2);
-                    document.getElementById('theta2').textContent = data.angles.theta2.toFixed(2);
-                    document.getElementById('theta3').textContent = data.angles.theta3.toFixed(2);
-                    document.getElementById('theta4').textContent = data.angles.theta4.toFixed(2);
-                    document.getElementById('d').textContent = data.angles.d.toFixed(2);
-                    document.getElementById('gripper_angle').textContent = data.angles.gripper_angle.toFixed(2);
-                    updateGripperButton(data.angles.is_gripper_open);
+                statusElement.textContent = data.message;
+                statusElement.className = 'status ' + (data.success ? 'success' : 'error');
+                
+                if (data.success) {
+                    updatePositionDisplay(data.position, data.angles);
+                } else {
+                    console.error('Position update error:', data.message);
                 }
             } catch (error) {
-                document.getElementById('position-status').textContent = 'Error: ' + error.message;
-                document.getElementById('position-status').className = 'status error';
+                console.error('Error updating position:', error);
+                const statusElement = document.getElementById('position-status');
+                statusElement.textContent = 'Failed to send position command';
+                statusElement.className = 'status error';
             }
         }
 
-        async function updateConfiguration() {
-            const link1 = document.getElementById('link1').value;
-            const link2 = document.getElementById('link2').value;
-            const link3 = document.getElementById('link3').value;
-            const link4 = document.getElementById('link4').value;
+        async function updateAngles() {
+            const angle1 = parseFloat(document.getElementById('angle1').value);
+            const angle2 = parseFloat(document.getElementById('angle2').value);
 
             try {
-                const response = await fetch('/update_configuration', {
+                const response = await fetch('/update_angles', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ link1, link2, link3, link4 })
+                    body: JSON.stringify({ angle1, angle2 })
                 });
 
                 const data = await response.json();
-                const statusElement = document.getElementById('config-status');
-                statusElement.textContent = data.status;
-                statusElement.className = 'status ' + (response.ok ? 'success' : 'error');
-            } catch (error) {
-                document.getElementById('config-status').textContent = 'Error: ' + error.message;
-                document.getElementById('config-status').className = 'status error';
-            }
-        }
-
-        async function updateGripperRotation() {
-            const angle = parseFloat(document.getElementById('gripper_rotation').value);
-
-            try {
-                const response = await fetch('/update_gripper_rotation', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ angle })
-                });
-
-                const data = await response.json();
-                const statusElement = document.getElementById('gripper-status');
-                statusElement.textContent = data.status;
-                statusElement.className = 'status ' + (response.ok ? 'success' : 'error');
+                const statusElement = document.getElementById('position-status');
+                statusElement.textContent = data.message;
+                statusElement.className = 'status ' + (data.success ? 'success' : 'error');
                 
-                document.getElementById('gripper_angle').textContent = data.gripper_angle.toFixed(2);
+                if (data.success) {
+                    updatePositionDisplay(data.position, data.angles);
+                } else {
+                    console.error('Angle update error:', data.message);
+                }
             } catch (error) {
-                document.getElementById('gripper-status').textContent = 'Error: ' + error.message;
-                document.getElementById('gripper-status').className = 'status error';
+                console.error('Error updating angles:', error);
+                const statusElement = document.getElementById('position-status');
+                statusElement.textContent = 'Failed to send angle command';
+                statusElement.className = 'status error';
+            }
+        }
+
+        async function moveZ(direction) {
+            const steps = parseInt(document.getElementById('z_steps').value) * direction;
+
+            try {
+                const response = await fetch('/move_z', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ steps })
+                });
+
+                const data = await response.json();
+                const statusElement = document.getElementById('z-yaw-status');
+                statusElement.textContent = data.message;
+                statusElement.className = 'status ' + (data.success ? 'success' : 'error');
+                
+                if (!data.success) {
+                    console.error('Z movement error:', data.message);
+                }
+            } catch (error) {
+                console.error('Error moving Z:', error);
+                const statusElement = document.getElementById('z-yaw-status');
+                statusElement.textContent = 'Failed to send Z movement command';
+                statusElement.className = 'status error';
+            }
+        }
+
+        async function moveYaw(direction) {
+            const steps = parseInt(document.getElementById('yaw_steps').value) * direction;
+
+            try {
+                const response = await fetch('/move_yaw', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ steps })
+                });
+
+                const data = await response.json();
+                const statusElement = document.getElementById('z-yaw-status');
+                statusElement.textContent = data.message;
+                statusElement.className = 'status ' + (data.success ? 'success' : 'error');
+                
+                if (!data.success) {
+                    console.error('Yaw movement error:', data.message);
+                }
+            } catch (error) {
+                console.error('Error moving Yaw:', error);
+                const statusElement = document.getElementById('z-yaw-status');
+                statusElement.textContent = 'Failed to send Yaw movement command';
+                statusElement.className = 'status error';
             }
         }
 
@@ -554,67 +757,186 @@
             isGripperOpen = isOpen;
         }
 
-        async function adjustAngle(angleId, direction) {
-            const currentValue = parseFloat(document.getElementById(angleId).textContent);
-            const stepSize = parseFloat(document.getElementById(angleId + '_adj').value);
-            const newValue = currentValue + (direction * stepSize);
+        // Serial Monitor Functions
+        let serialHistory = [];
 
-            // Update the display
-            document.getElementById(angleId).textContent = newValue.toFixed(2);
-
-            // If it's the gripper angle, update through the gripper rotation endpoint
-            if (angleId === 'gripper_angle') {
-                try {
-                    const response = await fetch('/update_gripper_rotation', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ angle: newValue })
-                    });
-
-                    const data = await response.json();
-                    const statusElement = document.getElementById('gripper-status');
-                    statusElement.textContent = data.status;
-                    statusElement.className = 'status ' + (response.ok ? 'success' : 'error');
-                } catch (error) {
-                    document.getElementById('gripper-status').textContent = 'Error: ' + error.message;
-                    document.getElementById('gripper-status').className = 'status error';
-                }
-            } else {
-                // For other angles, use the update_angle endpoint
-                try {
-                    const response = await fetch('/update_angle', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ 
-                            angle_id: angleId,
-                            value: newValue
-                        })
-                    });
-
-                    const data = await response.json();
-                    const statusElement = document.getElementById('position-status');
-                    statusElement.textContent = data.status;
-                    statusElement.className = 'status ' + (response.ok ? 'success' : 'error');
-
-                    // Update all angles from the response
-                    if (data.angles) {
-                        document.getElementById('theta1').textContent = data.angles.theta1.toFixed(2);
-                        document.getElementById('theta2').textContent = data.angles.theta2.toFixed(2);
-                        document.getElementById('theta3').textContent = data.angles.theta3.toFixed(2);
-                        document.getElementById('theta4').textContent = data.angles.theta4.toFixed(2);
-                        document.getElementById('d').textContent = data.angles.d.toFixed(2);
-                        document.getElementById('gripper_angle').textContent = data.angles.gripper_angle.toFixed(2);
+        function updateSerialMonitor() {
+            fetch('/get_serial_history')
+                .then(response => response.json())
+                .then(data => {
+                    const output = document.getElementById('serial-output');
+                    // Only update if there are new messages
+                    if (data.length !== serialHistory.length) {
+                        output.innerHTML = '';
+                        data.forEach(item => {
+                            const messageClass = item.direction.toLowerCase().includes('sent') ? 'sent' : 
+                                              item.direction.toLowerCase().includes('received') ? 'received' : 'system';
+                            output.innerHTML += `
+                                <div class="message">
+                                    <span class="timestamp">${item.timestamp}</span>
+                                    <span class="${messageClass}">${item.direction}: ${item.message}</span>
+                                </div>
+                            `;
+                        });
+                        output.scrollTop = output.scrollHeight;
+                        serialHistory = data;
                     }
-                } catch (error) {
-                    document.getElementById('position-status').textContent = 'Error: ' + error.message;
-                    document.getElementById('position-status').className = 'status error';
-                }
+                })
+                .catch(error => console.error('Error fetching serial history:', error));
+        }
+
+        function clearSerialMonitor() {
+            document.getElementById('serial-output').innerHTML = '';
+            serialHistory = [];
+        }
+
+        // Update serial monitor every second
+        setInterval(updateSerialMonitor, 1000);
+
+        // Modify existing functions to update serial monitor after each action
+        const originalUpdatePosition = updatePosition;
+        updatePosition = async function() {
+            await originalUpdatePosition();
+            updateSerialMonitor();
+        };
+
+        const originalUpdateAngles = updateAngles;
+        updateAngles = async function() {
+            await originalUpdateAngles();
+            updateSerialMonitor();
+        };
+
+        const originalMoveZ = moveZ;
+        moveZ = async function(direction) {
+            await originalMoveZ(direction);
+            updateSerialMonitor();
+        };
+
+        const originalMoveYaw = moveYaw;
+        moveYaw = async function(direction) {
+            await originalMoveYaw(direction);
+            updateSerialMonitor();
+        };
+
+        const originalToggleGripper = toggleGripper;
+        toggleGripper = async function() {
+            await originalToggleGripper();
+            updateSerialMonitor();
+        };
+
+        // Serial Configuration Functions
+        async function loadSerialSettings() {
+            try {
+                const response = await fetch('/get_serial_settings');
+                const settings = await response.json();
+                
+                // Update COM port select
+                const portSelect = document.getElementById('com-port');
+                portSelect.innerHTML = '';
+                settings.available_ports.forEach(port => {
+                    const option = document.createElement('option');
+                    option.value = port.port;
+                    option.text = `${port.port} - ${port.description}`;
+                    if (port.port === settings.com_port) {
+                        option.selected = true;
+                    }
+                    portSelect.appendChild(option);
+                });
+
+                // Update baudrate select
+                const baudrateSelect = document.getElementById('baudrate');
+                baudrateSelect.innerHTML = '';
+                settings.available_baudrates.forEach(baud => {
+                    const option = document.createElement('option');
+                    option.value = baud;
+                    option.text = baud;
+                    if (baud === settings.baudrate) {
+                        option.selected = true;
+                    }
+                    baudrateSelect.appendChild(option);
+                });
+
+                // Update connection status
+                updateConnectionStatus(settings.connected);
+            } catch (error) {
+                console.error('Error loading serial settings:', error);
             }
         }
+
+        function updateConnectionStatus(connected) {
+            const status = document.getElementById('connection-status');
+            const connectButton = document.getElementById('connectButton');
+            const disconnectButton = document.getElementById('disconnectButton');
+            const portSelect = document.getElementById('com-port');
+            const baudrateSelect = document.getElementById('baudrate');
+
+            if (connected) {
+                status.textContent = 'Connected';
+                status.className = 'connection-status connected';
+                connectButton.style.display = 'none';
+                disconnectButton.style.display = 'inline-block';
+                portSelect.disabled = true;
+                baudrateSelect.disabled = true;
+            } else {
+                status.textContent = 'Disconnected';
+                status.className = 'connection-status disconnected';
+                connectButton.style.display = 'inline-block';
+                disconnectButton.style.display = 'none';
+                portSelect.disabled = false;
+                baudrateSelect.disabled = false;
+            }
+        }
+
+        async function updateSerialSettings() {
+            const port = document.getElementById('com-port').value;
+            const baudrate = parseInt(document.getElementById('baudrate').value);
+
+            try {
+                const response = await fetch('/update_serial_settings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ port, baudrate })
+                });
+
+                const result = await response.json();
+                updateConnectionStatus(result.success);
+                if (!result.success) {
+                    alert(result.status);
+                }
+            } catch (error) {
+                console.error('Error updating serial settings:', error);
+                alert('Failed to update serial settings');
+            }
+        }
+
+        async function disconnectSerial() {
+            try {
+                const response = await fetch('/disconnect_serial', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                const result = await response.json();
+                updateConnectionStatus(false);
+                if (!result.success) {
+                    alert(result.status);
+                }
+            } catch (error) {
+                console.error('Error disconnecting serial:', error);
+                alert('Failed to disconnect');
+            }
+        }
+
+        async function refreshPorts() {
+            await loadSerialSettings();
+        }
+
+        // Load initial settings
+        loadSerialSettings();
     </script>
 </body>
 </html>
