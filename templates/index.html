@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>5DOF SCARA Robot Control</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         :root {
             --primary: #4361ee;
@@ -467,6 +468,89 @@
             font-weight: bold;
             color: var(--primary);
         }
+
+        .control-section {
+            margin-top: 20px;
+            padding: 20px;
+            background: white;
+            border-radius: 16px;
+            box-shadow: var(--card-shadow);
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        .control-button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: var(--transition);
+            margin-right: 12px;
+            margin-bottom: 12px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .control-button:hover {
+            background-color: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+
+        .instructions {
+            margin-top: 10px;
+        }
+
+        .instructions h4 {
+            margin-bottom: 10px;
+        }
+
+        .instructions ul {
+            list-style-type: disc;
+            padding-left: 20px;
+        }
+
+        .analog-display {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+        
+        .analog-values {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .analog-value {
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .analog-value span:first-child {
+            color: #6c757d;
+        }
+        
+        .analog-value span:last-child {
+            font-weight: bold;
+            color: var(--primary);
+            min-width: 50px;
+            text-align: right;
+        }
     </style>
 </head>
 <body>
@@ -586,8 +670,57 @@
             </div>
             <div id="serial-output"></div>
         </div>
+
+        
+
+        <div class="control-section">
+            <h3>Manual Control</h3>
+            <div class="control-group">
+                <button id="toggleManual" class="control-button">Enable Manual Control</button>
+                <button id="restartManual" class="control-button" style="background-color: var(--warning);">Restart Position</button>
+                <div id="manualStatus" class="status">Manual control: Disabled</div>
+            </div>
+            
+            <!-- Analog Values Display -->
+            <div class="analog-display">
+                <h4>Analog Values</h4>
+                <div class="analog-values">
+                    <div class="analog-value">
+                        <span>Left Stick X:</span>
+                        <span id="analog-lx">0.00</span>
+                    </div>
+                    <div class="analog-value">
+                        <span>Left Stick Y:</span>
+                        <span id="analog-ly">0.00</span>
+                    </div>
+                    <div class="analog-value">
+                        <span>Right Stick X:</span>
+                        <span id="analog-rx">0.00</span>
+                    </div>
+                    <div class="analog-value">
+                        <span>Right Stick Y:</span>
+                        <span id="analog-ry">0.00</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="instructions">
+                <h4>Manual Control Instructions:</h4>
+                <ul>
+                    <li>Left Stick: Control X,Y position</li>
+                    <li>A (Button 0): Z-axis Up (+10mm)</li>
+                    <li>X (Button 2): Z-axis Down (-10mm)</li>
+                    <li>B (Button 1): Yaw Right (+10°)</li>
+                    <li>Y (Button 3): Yaw Left (-10°)</li>
+                    <li>Back Button: Exit Manual Mode</li>
+                    <li>Restart Button: Reset to default position (X: -86.87, Y: 85.47, Z: 0)</li>
+                </ul>
+            </div>
+        </div>
     </div>
 
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let isGripperOpen = true;
 
@@ -937,6 +1070,139 @@
 
         // Load initial settings
         loadSerialSettings();
+
+        // Manual control toggle
+        document.getElementById('toggleManual').addEventListener('click', function() {
+            const isManual = document.getElementById('manualStatus').textContent.includes('Enabled');
+            fetch('/toggle_manual_mode', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ enable: !isManual })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const button = document.getElementById('toggleManual');
+                    const status = document.getElementById('manualStatus');
+                    if (!isManual) {
+                        button.textContent = 'Disable Manual Control';
+                        status.textContent = 'Manual control: Enabled';
+                        status.style.color = 'green';
+                    } else {
+                        button.textContent = 'Enable Manual Control';
+                        status.textContent = 'Manual control: Disabled';
+                        status.style.color = 'red';
+                    }
+                } else {
+                    alert('Failed to toggle manual control: ' + data.message);
+                }
+            });
+        });
+
+        // Add this after the manual control toggle event listener
+        document.getElementById('restartManual').addEventListener('click', async function() {
+            try {
+                console.log('Starting reset sequence...');
+                
+                // Check if we're in manual mode
+                const isManual = document.getElementById('manualStatus').textContent.includes('Enabled');
+                
+                if (isManual) {
+                    // First disable manual control
+                    const disableResponse = await fetch('/toggle_manual_mode', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ enable: false })
+                    });
+                    await disableResponse.json();
+                }
+
+                // Move to default X,Y position
+                const positionResponse = await fetch('/update_position', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ x: -86.87, y: 85.47 })
+                });
+                
+                const positionData = await positionResponse.json();
+                console.log('Position update response:', positionData);
+                
+                if (!positionData.success) {
+                    throw new Error('Failed to move to default position');
+                }
+
+                // Now calibrate Z using the 'z' command
+                const zResponse = await fetch('/move_z', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ steps: 0 }) // This will trigger a calibration
+                });
+
+                const zData = await zResponse.json();
+                console.log('Z calibration response:', zData);
+
+                if (!zData.success) {
+                    throw new Error('Failed to calibrate Z axis');
+                }
+
+                // If we were in manual mode, re-enable it
+                if (isManual) {
+                    const enableResponse = await fetch('/toggle_manual_mode', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ enable: true })
+                    });
+                    const enableData = await enableResponse.json();
+                    if (enableData.success) {
+                        console.log('Manual control re-enabled');
+                    }
+                }
+
+                console.log('Reset sequence completed successfully');
+            } catch (error) {
+                console.error('Error during reset:', error);
+                alert('Failed to reset position: ' + error.message);
+            }
+        });
+
+        function updateAnalogValues(lx, ly, rx, ry) {
+            document.getElementById('analog-lx').textContent = lx.toFixed(2);
+            document.getElementById('analog-ly').textContent = ly.toFixed(2);
+            document.getElementById('analog-rx').textContent = rx.toFixed(2);
+            document.getElementById('analog-ry').textContent = ry.toFixed(2);
+        }
+        
+        setInterval(() => {
+            if (document.getElementById('manualStatus').textContent.includes('Enabled')) {
+                fetch('/get_serial_history')
+                    .then(response => response.json())
+                    .then(data => {
+                        // Look for analog values in the last message
+                        const lastMessage = data[data.length - 1]?.message || '';
+                        if (lastMessage.includes('Analog Values')) {
+                            const values = lastMessage.match(/LX: (-?\d+\.\d+), LY: (-?\d+\.\d+), RX: (-?\d+\.\d+), RY: (-?\d+\.\d+)/);
+                            if (values) {
+                                updateAnalogValues(
+                                    parseFloat(values[1]),
+                                    parseFloat(values[2]),
+                                    parseFloat(values[3]),
+                                    parseFloat(values[4])
+                                );
+                            }
+                        }
+                    });
+            }
+        }, 100);
     </script>
 </body>
 </html>

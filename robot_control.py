@@ -2,11 +2,13 @@ import numpy as np
 from flask import Flask, render_template, request, jsonify
 import math
 import serial
+import serial.tools.list_ports
 import time
 from collections import deque
 from datetime import datetime
-import serial.tools.list_ports
 import traceback
+import pygame
+import threading
 
 app = Flask(__name__)
 
@@ -25,6 +27,10 @@ class ScaraRobot:
         
         # Gripper state
         self.is_gripper_open = True
+        
+        # Manual control state
+        self.manual_control = None
+        self.is_manual_mode = False
         
         # Serial communication history
         self.serial_history = deque(maxlen=100)  # Keep last 100 messages
@@ -84,6 +90,8 @@ class ScaraRobot:
         self.disconnect_serial()
 
         try:
+            # Import serial here to ensure it's available
+            import serial
             self.ser = serial.Serial(
                 port=self.com_port,
                 baudrate=self.baudrate,
@@ -108,6 +116,10 @@ class ScaraRobot:
             self.status = f"Connected to {self.com_port} at {self.baudrate} baud"
             self.add_to_history("System", self.status)
             return True
+        except ImportError:
+            self.status = "Failed to import serial module. Please install pyserial: pip install pyserial"
+            self.add_to_history("System", self.status)
+            return False
         except Exception as e:
             self.ser = None
             self.status = f"Failed to connect: {str(e)}"
@@ -312,6 +324,187 @@ class ScaraRobot:
         # Add gripper control command here when implemented in Arduino
         return True
 
+    def toggle_manual_mode(self, enable):
+        """Toggle manual control mode"""
+        try:
+            if enable and not self.is_manual_mode:
+                try:
+                    self.manual_control = ManualControl(self)
+                    self.manual_control.start()
+                    self.is_manual_mode = True
+                    self.add_to_history("System", "Manual control started")
+                    return {'success': True, 'message': 'Manual control started'}
+                except Exception as e:
+                    self.last_error = f"Failed to start manual control: {str(e)}"
+                    self.add_to_history("Error", self.last_error)
+                    return {'success': False, 'message': self.last_error}
+            elif not enable and self.is_manual_mode:
+                try:
+                    if self.manual_control:
+                        self.manual_control.stop()
+                        self.manual_control = None
+                    self.is_manual_mode = False
+                    self.add_to_history("System", "Manual control stopped")
+                    return {'success': True, 'message': 'Manual control stopped'}
+                except Exception as e:
+                    self.last_error = f"Failed to stop manual control: {str(e)}"
+                    self.add_to_history("Error", self.last_error)
+                    return {'success': False, 'message': self.last_error}
+            return {'success': True, 'message': 'No change in manual control state'}
+        except Exception as e:
+            self.last_error = f"Failed to toggle manual mode: {str(e)}"
+            self.add_to_history("Error", self.last_error)
+            return {'success': False, 'message': self.last_error}
+
+class ManualControl:
+    def __init__(self, robot):
+        self.robot = robot
+        self.running = False
+        self.control_thread = None
+        
+        # Set initial X and Y positions
+        self.current_x = -86.87
+        self.current_y = 85.47
+        
+        # Initialize Z and preserve current yaw
+        self.current_z = 0
+        self.current_yaw = robot.yaw_pos  # Preserve current yaw position
+        
+        # Movement increment (in mm)
+        self.move_increment = 10
+        self.z_increment = 10
+        self.yaw_increment = 10
+        
+        # Initialize Pygame
+        pygame.init()
+        pygame.joystick.init()
+        
+        # Check for controllers
+        self.joystick_count = pygame.joystick.get_count()
+        if self.joystick_count == 0:
+            print("No joystick connected.")
+            return
+            
+        self.joystick = pygame.joystick.Joystick(0)
+        self.joystick.init()
+        print(f"Joystick name: {self.joystick.get_name()}")
+        
+        # Threshold to avoid noise
+        self.THRESHOLD = 0.5
+        
+        # Button mappings
+        self.BUTTON_A = 0  # Z up
+        self.BUTTON_B = 1  # Yaw right
+        self.BUTTON_X = 2  # Z down
+        self.BUTTON_Y = 3  # Yaw left
+        self.BUTTON_LB = 4
+        self.BUTTON_RB = 5  # Z calibration
+        self.BUTTON_BACK = 6
+        self.BUTTON_START = 7
+        
+        # Axis mappings
+        self.AXIS_LX = 0  # Left stick X
+        self.AXIS_LY = 1  # Left stick Y
+        self.AXIS_RX = 2  # Right stick X
+        self.AXIS_RY = 3  # Right stick Y
+        self.AXIS_LT = 4  # Left trigger
+        self.AXIS_RT = 5  # Right trigger
+
+    def start(self):
+        if self.joystick_count == 0:
+            print("Cannot start: No joystick connected")
+            return
+            
+        # Move to initial X, Y position and calibrate Z
+        self.robot.move_to_position(self.current_x, self.current_y)
+        self.robot.send_command("z")  # Calibrate Z-axis
+        
+        self.running = True
+        self.control_thread = threading.Thread(target=self._control_loop)
+        self.control_thread.start()
+        print("Manual control started")
+
+    def stop(self):
+        self.running = False
+        if self.control_thread:
+            self.control_thread.join()
+        pygame.quit()
+        print("Manual control stopped")
+
+    def _control_loop(self):
+        last_print_time = time.time()
+        print_interval = 0.5  # Print values every 0.5 seconds
+        last_move_time = time.time()
+        move_interval = 0.2  # Minimum time between moves (seconds)
+        
+        while self.running:
+            current_time = time.time()
+            
+            # Get current analog values
+            lx = self.joystick.get_axis(self.AXIS_LX)
+            ly = self.joystick.get_axis(self.AXIS_LY)
+            
+            # Print values periodically
+            if current_time - last_print_time >= print_interval:
+                print(f"Analog Values - LX: {lx:.2f}, LY: {ly:.2f}")
+                print(f"Current Position - X: {self.current_x:.2f}, Y: {self.current_y:.2f}")
+                print(f"Current Z: {self.current_z}, Current Yaw: {self.current_yaw}")
+                last_print_time = current_time
+            
+            # Check if enough time has passed since last move
+            if current_time - last_move_time >= move_interval:
+                moved = False
+                
+                # Handle X-axis movement
+                if abs(lx) > self.THRESHOLD:
+                    x_increment = self.move_increment if lx > 0 else -self.move_increment
+                    self.current_x += x_increment
+                    moved = True
+                
+                # Handle Y-axis movement
+                if abs(ly) > self.THRESHOLD:
+                    y_increment = self.move_increment if ly > 0 else -self.move_increment
+                    self.current_y += y_increment
+                    moved = True
+                
+                # If either axis moved, update position
+                if moved:
+                    self.robot.move_to_position(self.current_x, self.current_y)
+                    self.robot.send_command(f"position {self.current_x} {self.current_y}")
+                    last_move_time = current_time
+            
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.running = False
+                    break
+                    
+                # Handle button presses
+                if event.type == pygame.JOYBUTTONDOWN:
+                    if event.button == self.BUTTON_A:  # Z up
+                        self.current_z += self.z_increment
+                        self.robot.move_z(self.z_increment)
+                        self.robot.send_command(f"u{self.z_increment}")
+                    elif event.button == self.BUTTON_X:  # Z down
+                        self.current_z -= self.z_increment
+                        self.robot.move_z(-self.z_increment)
+                        self.robot.send_command(f"d{self.z_increment}")
+                    elif event.button == self.BUTTON_B:  # Yaw right
+                        self.current_yaw += self.yaw_increment
+                        self.robot.move_yaw(self.yaw_increment)
+                        self.robot.send_command(f"r{self.yaw_increment}")
+                    elif event.button == self.BUTTON_Y:  # Yaw left
+                        self.current_yaw -= self.yaw_increment
+                        self.robot.move_yaw(-self.yaw_increment)
+                        self.robot.send_command(f"l{self.yaw_increment}")
+                    elif event.button == self.BUTTON_RB:  # Z calibration
+                        self.current_z = 0  # Reset Z position
+                        self.robot.send_command("z")  # Send Z calibration command
+                    elif event.button == self.BUTTON_BACK:
+                        self.running = False  # Stop manual control
+                        break
+            
+            time.sleep(0.1)  # Small delay to prevent overwhelming the system
+
 # Create robot instance
 robot = ScaraRobot()
 
@@ -398,6 +591,12 @@ def toggle_gripper():
         'status': 'Gripper toggled',
         'is_gripper_open': robot.is_gripper_open
     })
+
+@app.route('/toggle_manual_mode', methods=['POST'])
+def toggle_manual_mode():
+    data = request.get_json()
+    result = robot.toggle_manual_mode(data.get('enable', False))
+    return jsonify(result)
 
 if __name__ == '__main__':
     app.run(debug=True) 
