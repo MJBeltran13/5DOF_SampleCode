@@ -570,10 +570,10 @@
             <div class="input-group">
                 <h3>XY Position Control</h3>
                 <label for="x">X Position (mm):</label>
-                <input type="number" id="x" step="1" value="100">
+                <input type="number" id="x" step="1" value="-86.87">
                 
                 <label for="y">Y Position (mm):</label>
-                <input type="number" id="y" step="1" value="0">
+                <input type="number" id="y" step="1" value="85.47">
                 
                 <button onclick="updatePosition()" class="btn">Move to Position</button>
             </div>
@@ -604,12 +604,24 @@
                         <span id="current-y">0</span> mm
                     </div>
                     <div class="position-item">
+                        <span>Z:</span>
+                        <span id="current-z">0</span> mm
+                    </div>
+                    <div class="position-item">
+                        <span>Yaw:</span>
+                        <span id="current-yaw">0</span>°
+                    </div>
+                    <div class="position-item">
                         <span>Angle 1:</span>
                         <span id="current-angle1">90</span>°
                     </div>
                     <div class="position-item">
                         <span>Angle 2:</span>
                         <span id="current-angle2">90</span>°
+                    </div>
+                    <div class="position-item">
+                        <span>Gripper:</span>
+                        <span id="current-gripper">Open</span>
                     </div>
                 </div>
             </div>
@@ -636,7 +648,7 @@
             <div class="input-group">
                 <h3>Yaw Control</h3>
                 <label for="yaw_steps">Yaw Movement Steps:</label>
-                <input type="number" id="yaw_steps" step="100" value="100">
+                <input type="number" id="yaw_steps" step="10" value="10">
                 
                 <div style="display: flex; gap: 10px;">
                     <button onclick="moveYaw(-1)" class="btn btn-success">Rotate Left</button>
@@ -677,32 +689,11 @@
             <h3>Manual Control</h3>
             <div class="control-group">
                 <button id="toggleManual" class="control-button">Enable Manual Control</button>
-                <button id="restartManual" class="control-button" style="background-color: var(--warning);">Restart Position</button>
                 <div id="manualStatus" class="status">Manual control: Disabled</div>
             </div>
             
             <!-- Analog Values Display -->
-            <div class="analog-display">
-                <h4>Analog Values</h4>
-                <div class="analog-values">
-                    <div class="analog-value">
-                        <span>Left Stick X:</span>
-                        <span id="analog-lx">0.00</span>
-                    </div>
-                    <div class="analog-value">
-                        <span>Left Stick Y:</span>
-                        <span id="analog-ly">0.00</span>
-                    </div>
-                    <div class="analog-value">
-                        <span>Right Stick X:</span>
-                        <span id="analog-rx">0.00</span>
-                    </div>
-                    <div class="analog-value">
-                        <span>Right Stick Y:</span>
-                        <span id="analog-ry">0.00</span>
-                    </div>
-                </div>
-            </div>
+            
             
             <div class="instructions">
                 <h4>Manual Control Instructions:</h4>
@@ -713,7 +704,6 @@
                     <li>B (Button 1): Yaw Right (+10°)</li>
                     <li>Y (Button 3): Yaw Left (-10°)</li>
                     <li>Back Button: Exit Manual Mode</li>
-                    <li>Restart Button: Reset to default position (X: -86.87, Y: 85.47, Z: 0)</li>
                 </ul>
             </div>
         </div>
@@ -724,22 +714,52 @@
     <script>
         let isGripperOpen = true;
 
+        // Add auto-enable manual control after 2 seconds
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                document.getElementById('toggleManual').click();
+            }, 2000);
+            // Initial position update
+            updateAllPositions();
+        });
+
         function updatePositionDisplay(position, angles) {
             if (position) {
-                document.getElementById('current-x').textContent = position.x;
-                document.getElementById('current-y').textContent = position.y;
+                document.getElementById('current-x').textContent = position.x.toFixed(2);
+                document.getElementById('current-y').textContent = position.y.toFixed(2);
+                document.getElementById('current-z').textContent = position.z.toFixed(2);
+                document.getElementById('current-yaw').textContent = position.yaw.toFixed(2);
+                
                 // Update input fields too
-                document.getElementById('x').value = position.x;
-                document.getElementById('y').value = position.y;
+                document.getElementById('x').value = position.x.toFixed(2);
+                document.getElementById('y').value = position.y.toFixed(2);
             }
             if (angles) {
-                document.getElementById('current-angle1').textContent = angles.angle1;
-                document.getElementById('current-angle2').textContent = angles.angle2;
+                document.getElementById('current-angle1').textContent = angles.angle1.toFixed(2);
+                document.getElementById('current-angle2').textContent = angles.angle2.toFixed(2);
+                
                 // Update input fields too
-                document.getElementById('angle1').value = angles.angle1;
-                document.getElementById('angle2').value = angles.angle2;
+                document.getElementById('angle1').value = angles.angle1.toFixed(2);
+                document.getElementById('angle2').value = angles.angle2.toFixed(2);
             }
         }
+
+        async function updateAllPositions() {
+            try {
+                const response = await fetch('/get_current_position');
+                const data = await response.json();
+                
+                if (data.success) {
+                    updatePositionDisplay(data.position, data.angles);
+                    updateGripperStatus(data.is_gripper_open);
+                }
+            } catch (error) {
+                console.error('Error updating positions:', error);
+            }
+        }
+
+        // Update positions every 500ms
+        setInterval(updateAllPositions, 500);
 
         async function updatePosition() {
             const x = parseFloat(document.getElementById('x').value);
@@ -820,7 +840,9 @@
                 statusElement.textContent = data.message;
                 statusElement.className = 'status ' + (data.success ? 'success' : 'error');
                 
-                if (!data.success) {
+                if (data.success && data.z !== undefined) {
+                    updateZPosition(data.z);
+                } else {
                     console.error('Z movement error:', data.message);
                 }
             } catch (error) {
@@ -848,7 +870,9 @@
                 statusElement.textContent = data.message;
                 statusElement.className = 'status ' + (data.success ? 'success' : 'error');
                 
-                if (!data.success) {
+                if (data.success && data.yaw !== undefined) {
+                    updateYawPosition(data.yaw);
+                } else {
                     console.error('Yaw movement error:', data.message);
                 }
             } catch (error) {
@@ -877,6 +901,7 @@
                 statusElement.className = 'status ' + (response.ok ? 'success' : 'error');
                 
                 updateGripperButton(data.is_gripper_open);
+                updateGripperStatus(data.is_gripper_open);
             } catch (error) {
                 document.getElementById('gripper-status').textContent = 'Error: ' + error.message;
                 document.getElementById('gripper-status').className = 'status error';
@@ -888,6 +913,18 @@
             button.textContent = isOpen ? 'Close Gripper' : 'Open Gripper';
             button.className = 'btn toggle-button ' + (isOpen ? 'open' : 'closed');
             isGripperOpen = isOpen;
+        }
+
+        function updateZPosition(z) {
+            document.getElementById('current-z').textContent = z.toFixed(2);
+        }
+
+        function updateYawPosition(yaw) {
+            document.getElementById('current-yaw').textContent = yaw.toFixed(2);
+        }
+
+        function updateGripperStatus(isOpen) {
+            document.getElementById('current-gripper').textContent = isOpen ? 'Open' : 'Closed';
         }
 
         // Serial Monitor Functions
@@ -1099,80 +1136,6 @@
                     alert('Failed to toggle manual control: ' + data.message);
                 }
             });
-        });
-
-        // Add this after the manual control toggle event listener
-        document.getElementById('restartManual').addEventListener('click', async function() {
-            try {
-                console.log('Starting reset sequence...');
-                
-                // Check if we're in manual mode
-                const isManual = document.getElementById('manualStatus').textContent.includes('Enabled');
-                
-                if (isManual) {
-                    // First disable manual control
-                    const disableResponse = await fetch('/toggle_manual_mode', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ enable: false })
-                    });
-                    await disableResponse.json();
-                }
-
-                // Move to default X,Y position
-                const positionResponse = await fetch('/update_position', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ x: -86.87, y: 85.47 })
-                });
-                
-                const positionData = await positionResponse.json();
-                console.log('Position update response:', positionData);
-                
-                if (!positionData.success) {
-                    throw new Error('Failed to move to default position');
-                }
-
-                // Now calibrate Z using the 'z' command
-                const zResponse = await fetch('/move_z', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ steps: 0 }) // This will trigger a calibration
-                });
-
-                const zData = await zResponse.json();
-                console.log('Z calibration response:', zData);
-
-                if (!zData.success) {
-                    throw new Error('Failed to calibrate Z axis');
-                }
-
-                // If we were in manual mode, re-enable it
-                if (isManual) {
-                    const enableResponse = await fetch('/toggle_manual_mode', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ enable: true })
-                    });
-                    const enableData = await enableResponse.json();
-                    if (enableData.success) {
-                        console.log('Manual control re-enabled');
-                    }
-                }
-
-                console.log('Reset sequence completed successfully');
-            } catch (error) {
-                console.error('Error during reset:', error);
-                alert('Failed to reset position: ' + error.message);
-            }
         });
 
         function updateAnalogValues(lx, ly, rx, ry) {

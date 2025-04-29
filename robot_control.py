@@ -19,11 +19,12 @@ class ScaraRobot:
         self.link2 = 86.87  # Link 2 length (L2)
         
         # Current positions
-        self.theta1 = 0  # Base rotation
-        self.theta2 = 0  # First arm joint
-        self.theta3 = 0  # Second arm joint
-        self.z_pos = 0   # Z position
-        self.yaw_pos = 0 # Yaw position
+        self.current_x = -86.87  # Initial X position
+        self.current_y = 85.47   # Initial Y position
+        self.current_z = 0       # Initial Z position
+        self.current_yaw = 0     # Initial Yaw position
+        self.theta1 = 90         # Base rotation
+        self.theta2 = 90         # First arm joint
         
         # Gripper state
         self.is_gripper_open = True
@@ -200,7 +201,15 @@ class ScaraRobot:
             
             if response is None:
                 return {'success': False, 'message': self.last_error}
-            return {'success': True, 'message': response}
+            
+            # Update Z position
+            self.current_z += steps
+            
+            return {
+                'success': True,
+                'message': response,
+                'z': self.current_z
+            }
         except Exception as e:
             self.last_error = f"Z movement failed: {str(e)}"
             return {'success': False, 'message': self.last_error}
@@ -215,7 +224,15 @@ class ScaraRobot:
             
             if response is None:
                 return {'success': False, 'message': self.last_error}
-            return {'success': True, 'message': response}
+            
+            # Update Yaw position
+            self.current_yaw += steps
+            
+            return {
+                'success': True,
+                'message': response,
+                'yaw': self.current_yaw
+            }
         except Exception as e:
             self.last_error = f"Yaw movement failed: {str(e)}"
             return {'success': False, 'message': self.last_error}
@@ -309,6 +326,12 @@ class ScaraRobot:
             if response is None:
                 return {'success': False, 'message': self.last_error}
             
+            # Update current positions
+            self.current_x = x
+            self.current_y = y
+            self.theta1 = angle1
+            self.theta2 = angle2
+            
             return {
                 'success': True,
                 'message': response,
@@ -356,6 +379,26 @@ class ScaraRobot:
             self.add_to_history("Error", self.last_error)
             return {'success': False, 'message': self.last_error}
 
+    def get_current_position(self):
+        """Get current position data"""
+        try:
+            return {
+                'success': True,
+                'position': {
+                    'x': self.current_x,
+                    'y': self.current_y,
+                    'z': self.current_z,
+                    'yaw': self.current_yaw
+                },
+                'angles': {
+                    'angle1': self.theta1,
+                    'angle2': self.theta2
+                },
+                'is_gripper_open': self.is_gripper_open
+            }
+        except Exception as e:
+            return {'success': False, 'message': str(e)}
+
 class ManualControl:
     def __init__(self, robot):
         self.robot = robot
@@ -363,12 +406,10 @@ class ManualControl:
         self.control_thread = None
         
         # Set initial X and Y positions
-        self.current_x = -86.87
-        self.current_y = 85.47
-        
-        # Initialize Z and preserve current yaw
-        self.current_z = 0
-        self.current_yaw = robot.yaw_pos  # Preserve current yaw position
+        self.current_x = -86.87  # Initial X position
+        self.current_y = 85.47   # Initial Y position
+        self.current_z = 0       # Initial Z position
+        self.current_yaw = 0     # Initial Yaw position
         
         # Movement increment (in mm)
         self.move_increment = 10
@@ -540,6 +581,14 @@ def update_serial_settings():
 @app.route('/get_serial_history')
 def get_serial_history():
     return jsonify(robot.get_serial_history())
+
+@app.route('/get_current_position')
+def get_current_position():
+    try:
+        result = robot.get_current_position()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 400
 
 @app.route('/move_z', methods=['POST'])
 def move_z():
