@@ -6,10 +6,12 @@
 Servo myservo1; // Elbow
 Servo myservo2; // Base
 Servo myservo3; // Gripper
+Servo myservo4; // Gripper Rotation
 
 const int servoPin1 = 33;
 const int servoPin2 = 25;
 const int servoPin3 = 26;
+const int servoPin4 = 27; // Gripper Rotation Servo
 
 // Link lengths in mm
 const float L1 = 85.47;
@@ -20,6 +22,12 @@ const int BASE_MIN_ANGLE = 30;
 const int BASE_MAX_ANGLE = 150;
 const int ELBOW_MIN_ANGLE = 30;
 const int ELBOW_MAX_ANGLE = 150;
+const int ROTATION_MIN_ANGLE = 0;   // Gripper rotation min angle
+const int ROTATION_MAX_ANGLE = 180; // Gripper rotation max angle
+
+// Gripper positions
+const int GRIPPER_OPEN_ANGLE = 0;    // Gripper open position
+const int GRIPPER_CLOSED_ANGLE = 90; // Gripper closed position
 
 // Stepper motor (Z LIFT) pin definitions
 const int DIR_PIN_Z = 13;
@@ -69,6 +77,10 @@ void setup()
   myservo3.setPeriodHertz(50);
   myservo3.attach(servoPin3, 500, 2400);
   myservo3.write(90);
+  
+  myservo4.setPeriodHertz(50);
+  myservo4.attach(servoPin4, 500, 2400);
+  myservo4.write(90);
 
   Serial.println("Servos initialized.");
 
@@ -92,6 +104,10 @@ void setup()
   Serial.println("d100            - move Z lift down 100 steps");
   Serial.println("l100            - rotate yaw left 100 steps");
   Serial.println("r100            - rotate yaw right 100 steps");
+  Serial.println("gl10            - rotate gripper left 10 degrees");
+  Serial.println("gr10            - rotate gripper right 10 degrees");
+  Serial.println("go              - open gripper");
+  Serial.println("gc              - close gripper");
   Serial.println("p               - print positions");
 }
 
@@ -102,38 +118,75 @@ void loop()
     String inputString = Serial.readStringUntil('\n');
     inputString.trim();
 
+    // Handle "go" and "gc" commands for gripper control
+    if (inputString == "go")
+    {
+      openGripper();
+    }
+    else if (inputString == "gc")
+    {
+      closeGripper();
+    }
     // Single character commands first
-    if (inputString.length() == 1 || inputString.startsWith("u") || inputString.startsWith("d") || inputString.startsWith("l") || inputString.startsWith("r"))
+    else if (inputString.length() == 1 || inputString.startsWith("u") || inputString.startsWith("d") || 
+        inputString.startsWith("l") || inputString.startsWith("r") || inputString.startsWith("g"))
     {
       char command = inputString.charAt(0);
 
-      int steps = inputString.substring(1).toInt();
-      if (command == 'u')
+      if (command == 'g')
       {
-        moveStepsZ(steps);
+        if (inputString.charAt(1) == 'l')
+        {
+          // Gripper rotate left
+          int degrees = inputString.substring(2).toInt();
+          rotateGripper(-degrees);
+        }
+        else if (inputString.charAt(1) == 'r')
+        {
+          // Gripper rotate right
+          int degrees = inputString.substring(2).toInt();
+          rotateGripper(degrees);
+        }
+        else
+        {
+          // Set absolute gripper angle
+          int angle = inputString.substring(1).toInt();
+          angle = constrain(angle, ROTATION_MIN_ANGLE, ROTATION_MAX_ANGLE);
+          myservo4.write(angle);
+          Serial.print("Gripper Rotation set to: ");
+          Serial.println(angle);
+        }
       }
-      else if (command == 'd')
+      else
       {
-        moveStepsZ(-steps);
-      }
-      else if (command == 'l')
-      {
-        moveStepsYaw(-steps);
-      }
-      else if (command == 'r')
-      {
-        moveStepsYaw(steps);
-      }
+        int steps = inputString.substring(1).toInt();
+        if (command == 'u')
+        {
+          moveStepsZ(steps);
+        }
+        else if (command == 'd')
+        {
+          moveStepsZ(-steps);
+        }
+        else if (command == 'l')
+        {
+          moveStepsYaw(-steps);
+        }
+        else if (command == 'r')
+        {
+          moveStepsYaw(steps);
+        }
 
-      if (command == 'u' || command == 'd')
-      {
-        Serial.print("Z Lift Position: ");
-        Serial.println(currentPositionZ);
-      }
-      if (command == 'l' || command == 'r')
-      {
-        Serial.print("Yaw Position: ");
-        Serial.println(currentPositionYaw);
+        if (command == 'u' || command == 'd')
+        {
+          Serial.print("Z Lift Position: ");
+          Serial.println(currentPositionZ);
+        }
+        if (command == 'l' || command == 'r')
+        {
+          Serial.print("Yaw Position: ");
+          Serial.println(currentPositionYaw);
+        }
       }
     }
     else if (inputString == "p")
@@ -142,6 +195,22 @@ void loop()
       Serial.println(currentPositionZ);
       Serial.print("Current Yaw Position: ");
       Serial.println(currentPositionYaw);
+      Serial.print("Current Gripper Rotation Angle: ");
+      Serial.println(myservo4.read());
+      Serial.print("Current Gripper State: ");
+      if (myservo3.read() == GRIPPER_OPEN_ANGLE)
+      {
+        Serial.println("Open");
+      }
+      else if (myservo3.read() == GRIPPER_CLOSED_ANGLE)
+      {
+        Serial.println("Closed");
+      }
+      else
+      {
+        Serial.print(myservo3.read());
+        Serial.println(" degrees");
+      }
     }
     else
     {
@@ -194,6 +263,7 @@ void calculateKinematics()
   float angle1 = myservo1.read();
   float angle2 = myservo2.read();
   float gripperAngle = myservo3.read();
+  float gripperRotationAngle = myservo4.read();
 
   float theta1 = radians(angle1);
   float theta2 = radians(angle2);
@@ -209,8 +279,12 @@ void calculateKinematics()
   Serial.print(angle1);
   Serial.print(" degrees, ");
 
-  Serial.print("Gripper Rotation Angle (Servo 3): ");
+  Serial.print("Gripper Angle (Servo 3): ");
   Serial.print(gripperAngle);
+  Serial.print(" degrees, ");
+  
+  Serial.print("Gripper Rotation Angle (Servo 4): ");
+  Serial.print(gripperRotationAngle);
   Serial.println(" degrees");
 
   Serial.print("End Effector Position -> X: ");
@@ -359,4 +433,37 @@ void moveStepsYaw(int steps)
   }
 
   currentPositionYaw += steps;
+}
+
+// Add function for rotating the gripper
+void rotateGripper(int degrees)
+{
+  int currentAngle = myservo4.read();
+  int newAngle = currentAngle + degrees;
+  
+  // Constrain to valid range
+  newAngle = constrain(newAngle, ROTATION_MIN_ANGLE, ROTATION_MAX_ANGLE);
+  
+  // Move to new position
+  myservo4.write(newAngle);
+  
+  Serial.print("Gripper Rotation: ");
+  Serial.print(currentAngle);
+  Serial.print(" -> ");
+  Serial.print(newAngle);
+  Serial.println(" degrees");
+}
+
+// Function to open the gripper
+void openGripper()
+{
+  myservo3.write(GRIPPER_OPEN_ANGLE);
+  Serial.println("Gripper opened");
+}
+
+// Function to close the gripper
+void closeGripper()
+{
+  myservo3.write(GRIPPER_CLOSED_ANGLE);
+  Serial.println("Gripper closed");
 }

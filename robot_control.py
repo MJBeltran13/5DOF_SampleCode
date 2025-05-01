@@ -28,6 +28,7 @@ class ScaraRobot:
         
         # Gripper state
         self.is_gripper_open = True
+        self.gripper_rotation = 90  # Initial gripper rotation angle (0-180)
         
         # Manual control state
         self.manual_control = None
@@ -343,9 +344,50 @@ class ScaraRobot:
             return {'success': False, 'message': self.last_error}
 
     def toggle_gripper(self, should_open):
-        self.is_gripper_open = should_open
-        # Add gripper control command here when implemented in Arduino
-        return True
+        """Open or close the gripper"""
+        try:
+            if should_open:
+                response = self.send_command("go")  # Open gripper command
+                self.is_gripper_open = True
+            else:
+                response = self.send_command("gc")  # Close gripper command
+                self.is_gripper_open = False
+            
+            if response is None:
+                return {'success': False, 'message': self.last_error}
+            
+            return {
+                'success': True,
+                'message': response,
+                'is_gripper_open': self.is_gripper_open
+            }
+        except Exception as e:
+            self.last_error = f"Gripper operation failed: {str(e)}"
+            return {'success': False, 'message': self.last_error}
+
+    def rotate_gripper(self, direction, degrees):
+        """Rotate the gripper left or right by specified degrees"""
+        try:
+            if direction == 'left':
+                response = self.send_command(f"gl{degrees}")
+                self.gripper_rotation = max(0, self.gripper_rotation - degrees)
+            elif direction == 'right':
+                response = self.send_command(f"gr{degrees}")
+                self.gripper_rotation = min(180, self.gripper_rotation + degrees)
+            else:
+                return {'success': False, 'message': "Invalid direction. Use 'left' or 'right'"}
+            
+            if response is None:
+                return {'success': False, 'message': self.last_error}
+            
+            return {
+                'success': True,
+                'message': response,
+                'gripper_rotation': self.gripper_rotation
+            }
+        except Exception as e:
+            self.last_error = f"Gripper rotation failed: {str(e)}"
+            return {'success': False, 'message': self.last_error}
 
     def toggle_manual_mode(self, enable):
         """Toggle manual control mode"""
@@ -394,7 +436,10 @@ class ScaraRobot:
                     'angle1': self.theta1,
                     'angle2': self.theta2
                 },
-                'is_gripper_open': self.is_gripper_open
+                'gripper': {
+                    'is_open': self.is_gripper_open,
+                    'rotation': self.gripper_rotation
+                }
             }
         except Exception as e:
             return {'success': False, 'message': str(e)}
@@ -438,10 +483,11 @@ class ManualControl:
         self.BUTTON_B = 1  # Yaw right
         self.BUTTON_X = 2  # Z down
         self.BUTTON_Y = 3  # Yaw left
-        self.BUTTON_LB = 4
-        self.BUTTON_RB = 5  # Z calibration
-        self.BUTTON_BACK = 6
-        self.BUTTON_START = 7
+        self.BUTTON_LB = 4  # Rotate gripper left
+        self.BUTTON_RB = 5  # Rotate gripper right
+        self.BUTTON_BACK = 6  # Exit manual mode
+        self.BUTTON_START = 7  
+        self.BUTTON_GRIPPER = 9  # Toggle gripper open/close
         
         # Axis mappings
         self.AXIS_LX = 0  # Left stick X
@@ -524,22 +570,21 @@ class ManualControl:
                     if event.button == self.BUTTON_A:  # Z up
                         self.current_z += self.z_increment
                         self.robot.move_z(self.z_increment)
-                        self.robot.send_command(f"u{self.z_increment}")
                     elif event.button == self.BUTTON_X:  # Z down
                         self.current_z -= self.z_increment
                         self.robot.move_z(-self.z_increment)
-                        self.robot.send_command(f"d{self.z_increment}")
                     elif event.button == self.BUTTON_B:  # Yaw right
                         self.current_yaw += self.yaw_increment
                         self.robot.move_yaw(self.yaw_increment)
-                        self.robot.send_command(f"r{self.yaw_increment}")
                     elif event.button == self.BUTTON_Y:  # Yaw left
                         self.current_yaw -= self.yaw_increment
                         self.robot.move_yaw(-self.yaw_increment)
-                        self.robot.send_command(f"l{self.yaw_increment}")
-                    elif event.button == self.BUTTON_RB:  # Z calibration
-                        self.current_z = 0  # Reset Z position
-                        self.robot.send_command("z")  # Send Z calibration command
+                    elif event.button == self.BUTTON_LB:  # Rotate gripper left
+                        self.robot.rotate_gripper('left', 10)
+                    elif event.button == self.BUTTON_RB:  # Rotate gripper right
+                        self.robot.rotate_gripper('right', 10)
+                    elif event.button == self.BUTTON_GRIPPER:  # Toggle gripper
+                        self.robot.toggle_gripper(not self.robot.is_gripper_open)
                     elif event.button == self.BUTTON_BACK:
                         self.running = False  # Stop manual control
                         break
@@ -635,11 +680,19 @@ def update_angles():
 @app.route('/toggle_gripper', methods=['POST'])
 def toggle_gripper():
     data = request.get_json()
-    success = robot.toggle_gripper(data['is_open'])
-    return jsonify({
-        'status': 'Gripper toggled',
-        'is_gripper_open': robot.is_gripper_open
-    })
+    result = robot.toggle_gripper(data['is_open'])
+    return jsonify(result)
+
+@app.route('/rotate_gripper', methods=['POST'])
+def rotate_gripper():
+    try:
+        data = request.get_json()
+        direction = data['direction']  # 'left' or 'right'
+        degrees = int(data['degrees'])
+        result = robot.rotate_gripper(direction, degrees)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 400
 
 @app.route('/toggle_manual_mode', methods=['POST'])
 def toggle_manual_mode():

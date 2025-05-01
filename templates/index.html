@@ -623,6 +623,10 @@
                         <span>Gripper:</span>
                         <span id="current-gripper">Open</span>
                     </div>
+                    <div class="position-item">
+                        <span>Rotation:</span>
+                        <span id="current-rotation">90</span>°
+                    </div>
                 </div>
             </div>
         </div>
@@ -664,6 +668,19 @@
                 <button id="gripperToggle" onclick="toggleGripper()" class="btn toggle-button open">Open Gripper</button>
                 <div id="gripper-status" class="status"></div>
             </div>
+            
+            <!-- Gripper Rotation Control -->
+            <div class="gripper-rotation-controls">
+                <h3>Gripper Rotation</h3>
+                <label for="rotation_degrees">Rotation Degrees:</label>
+                <input type="number" id="rotation_degrees" step="10" value="10" min="1" max="180">
+                
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <button onclick="rotateGripper('left')" class="btn btn-success">Rotate Left</button>
+                    <button onclick="rotateGripper('right')" class="btn btn-danger">Rotate Right</button>
+                </div>
+                <div id="rotation-status" class="status"></div>
+            </div>
         </div>
 
         <!-- Serial Monitor with Configuration -->
@@ -703,7 +720,10 @@
                     <li>X (Button 2): Z-axis Down (-10mm)</li>
                     <li>B (Button 1): Yaw Right (+10°)</li>
                     <li>Y (Button 3): Yaw Left (-10°)</li>
-                    <li>Back Button: Exit Manual Mode</li>
+                    <li>LB (Button 4): Rotate Gripper Left (-10°)</li>
+                    <li>RB (Button 5): Rotate Gripper Right (+10°)</li>
+                    <li>Button 9: Toggle Gripper Open/Close</li>
+                    <li>Back (Button 6): Exit Manual Mode</li>
                 </ul>
             </div>
         </div>
@@ -713,6 +733,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let isGripperOpen = true;
+        let gripperRotation = 90; // Initial gripper rotation angle
 
         // Add auto-enable manual control after 2 seconds
         window.addEventListener('load', function() {
@@ -751,7 +772,10 @@
                 
                 if (data.success) {
                     updatePositionDisplay(data.position, data.angles);
-                    updateGripperStatus(data.is_gripper_open);
+                    if (data.gripper) {
+                        updateGripperStatus(data.gripper.is_open);
+                        updateGripperRotation(data.gripper.rotation);
+                    }
                 }
             } catch (error) {
                 console.error('Error updating positions:', error);
@@ -897,11 +921,12 @@
 
                 const data = await response.json();
                 const statusElement = document.getElementById('gripper-status');
-                statusElement.textContent = data.status;
-                statusElement.className = 'status ' + (response.ok ? 'success' : 'error');
+                statusElement.textContent = data.message || "Gripper toggled";
+                statusElement.className = 'status ' + (data.success ? 'success' : 'error');
                 
-                updateGripperButton(data.is_gripper_open);
-                updateGripperStatus(data.is_gripper_open);
+                if (data.success && data.is_gripper_open !== undefined) {
+                    updateGripperStatus(data.is_gripper_open);
+                }
             } catch (error) {
                 document.getElementById('gripper-status').textContent = 'Error: ' + error.message;
                 document.getElementById('gripper-status').className = 'status error';
@@ -925,6 +950,45 @@
 
         function updateGripperStatus(isOpen) {
             document.getElementById('current-gripper').textContent = isOpen ? 'Open' : 'Closed';
+            updateGripperButton(isOpen);
+        }
+        
+        function updateGripperRotation(rotation) {
+            document.getElementById('current-rotation').textContent = rotation;
+            gripperRotation = rotation;
+        }
+
+        async function rotateGripper(direction) {
+            const degrees = parseInt(document.getElementById('rotation_degrees').value);
+            
+            try {
+                const response = await fetch('/rotate_gripper', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ direction, degrees })
+                });
+
+                const data = await response.json();
+                const statusElement = document.getElementById('rotation-status');
+                statusElement.textContent = data.message;
+                statusElement.className = 'status ' + (data.success ? 'success' : 'error');
+                
+                if (data.success && data.gripper_rotation !== undefined) {
+                    updateGripperRotation(data.gripper_rotation);
+                } else {
+                    console.error('Gripper rotation error:', data.message);
+                }
+            } catch (error) {
+                console.error('Error rotating gripper:', error);
+                const statusElement = document.getElementById('rotation-status');
+                statusElement.textContent = 'Failed to send gripper rotation command';
+                statusElement.className = 'status error';
+            }
+            
+            // Update serial monitor
+            updateSerialMonitor();
         }
 
         // Serial Monitor Functions
