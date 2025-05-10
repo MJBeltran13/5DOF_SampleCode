@@ -485,9 +485,10 @@ class ManualControl:
         self.BUTTON_Y = 3  # Yaw left
         self.BUTTON_LB = 4  # Rotate gripper left
         self.BUTTON_RB = 5  # Rotate gripper right
-        self.BUTTON_BACK = 6  # Exit manual mode
-        self.BUTTON_START = 7  
-        self.BUTTON_GRIPPER = 9  # Toggle gripper open/close
+        self.BUTTON_BACK = 6
+        self.BUTTON_START = 7
+        self.BUTTON_RESTART = 8  # Restart connection
+        self.BUTTON_GRIPPER = 9  # Toggle gripper
         
         # Axis mappings
         self.AXIS_LX = 0  # Left stick X
@@ -496,6 +497,21 @@ class ManualControl:
         self.AXIS_RY = 3  # Right stick Y
         self.AXIS_LT = 4  # Left trigger
         self.AXIS_RT = 5  # Right trigger
+
+    def restart_connection(self):
+        """Restart serial connection"""
+        try:
+            # First disconnect
+            self.robot.disconnect_serial()
+            time.sleep(1)  # Wait a bit
+            # Then reconnect
+            success = self.robot.connect_serial()
+            if success:
+                self.robot.add_to_history("System", "Connection restarted successfully")
+            else:
+                self.robot.add_to_history("Error", "Failed to restart connection")
+        except Exception as e:
+            self.robot.add_to_history("Error", f"Error during restart: {str(e)}")
 
     def start(self):
         if self.joystick_count == 0:
@@ -570,24 +586,31 @@ class ManualControl:
                     if event.button == self.BUTTON_A:  # Z up
                         self.current_z += self.z_increment
                         self.robot.move_z(self.z_increment)
+                        self.robot.send_command(f"u{self.z_increment}")
                     elif event.button == self.BUTTON_X:  # Z down
                         self.current_z -= self.z_increment
                         self.robot.move_z(-self.z_increment)
+                        self.robot.send_command(f"d{self.z_increment}")
                     elif event.button == self.BUTTON_B:  # Yaw right
                         self.current_yaw += self.yaw_increment
                         self.robot.move_yaw(self.yaw_increment)
+                        self.robot.send_command(f"r{self.yaw_increment}")
                     elif event.button == self.BUTTON_Y:  # Yaw left
                         self.current_yaw -= self.yaw_increment
                         self.robot.move_yaw(-self.yaw_increment)
+                        self.robot.send_command(f"l{self.yaw_increment}")
                     elif event.button == self.BUTTON_LB:  # Rotate gripper left
                         self.robot.rotate_gripper('left', 10)
                     elif event.button == self.BUTTON_RB:  # Rotate gripper right
                         self.robot.rotate_gripper('right', 10)
-                    elif event.button == self.BUTTON_GRIPPER:  # Toggle gripper
-                        self.robot.toggle_gripper(not self.robot.is_gripper_open)
                     elif event.button == self.BUTTON_BACK:
                         self.running = False  # Stop manual control
                         break
+                    elif event.button == self.BUTTON_RESTART:  # Button 8 for restart
+                        self.restart_connection()
+                    elif event.button == self.BUTTON_GRIPPER:  # Button 9 for gripper
+                        self.robot.toggle_gripper(not self.robot.is_gripper_open)
+                        self.robot.send_command("g")  # Send gripper toggle command
             
             time.sleep(0.1)  # Small delay to prevent overwhelming the system
 

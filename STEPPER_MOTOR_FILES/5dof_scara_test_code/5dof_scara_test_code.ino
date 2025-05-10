@@ -118,6 +118,13 @@ void loop()
     String inputString = Serial.readStringUntil('\n');
     inputString.trim();
 
+    // Handle reset command
+    if (inputString == "reset")
+    {
+      resetAll();
+      return;
+    }
+
     // Handle "go" and "gc" commands for gripper control
     if (inputString == "go")
     {
@@ -466,4 +473,25 @@ void closeGripper()
 {
   myservo3.write(GRIPPER_CLOSED_ANGLE);
   Serial.println("Gripper closed");
+}
+
+void resetAll()
+{
+  // Reset Z position
+  currentPositionZ = 0;
+  EEPROM.write(positionAddress, currentPositionZ);
+  
+  // Reset Yaw position
+  currentPositionYaw = 0;
+  
+  // Reset servos to default positions
+  myservo1.write(90);  // Elbow
+  myservo2.write(90);  // Base
+  myservo3.write(GRIPPER_OPEN_ANGLE);  // Gripper open
+  myservo4.write(90);  // Gripper rotation
+  
+  // Calibrate Z axis
+  calibrateToZero();
+  
+  Serial.println("System reset complete - All positions set to default");
 }
