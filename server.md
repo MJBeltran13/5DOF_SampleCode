@@ -7,3 +7,5 @@ sudo raspi-config
 python server.py
 sudo apt-get update && sudo apt-get install -y python3-pip python3-pil python3-pil.imagetk python3-rpi.gpio python3-smbus
 python3-pip python3-pil python3-pil.imagetk python3-rpi.gpio python3-smbus
+sudo pip3 install --break-system-packages adafruit-blinka
+sudo pip3 install --break-system-packages adafruit-circuitpython-ssd1306
