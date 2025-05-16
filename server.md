@@ -10,3 +10,4 @@ python3-pip python3-pil python3-pil.imagetk python3-rpi.gpio python3-smbus
 sudo pip3 install --break-system-packages adafruit-blinka
 sudo pip3 install --break-system-packages adafruit-circuitpython-ssd1306
 pip install adafruit-circuitpython-ssd1306 pillow
+pip install adafruit-circuitpython-ssd1327
