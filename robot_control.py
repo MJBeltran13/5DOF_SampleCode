@@ -504,10 +504,30 @@ class ManualControl:
             # First disconnect
             self.robot.disconnect_serial()
             time.sleep(1)  # Wait a bit
+            
+            # Reset all positions to default values
+            self.current_x = -86.87  # Initial X position
+            self.current_y = 85.47   # Initial Y position
+            self.current_z = 0       # Initial Z position
+            self.current_yaw = 0     # Initial Yaw position
+            
+            # Reset robot's positions
+            self.robot.current_x = -86.87
+            self.robot.current_y = 85.47
+            self.robot.current_z = 0
+            self.robot.current_yaw = 0
+            self.robot.theta1 = 90
+            self.robot.theta2 = 90
+            self.robot.gripper_rotation = 90
+            self.robot.is_gripper_open = True
+            
             # Then reconnect
             success = self.robot.connect_serial()
             if success:
-                self.robot.add_to_history("System", "Connection restarted successfully")
+                # Move to initial position
+                self.robot.move_to_position(self.current_x, self.current_y)
+                self.robot.send_command("z")  # Calibrate Z-axis
+                self.robot.add_to_history("System", "Connection restarted successfully and positions reset")
             else:
                 self.robot.add_to_history("Error", "Failed to restart connection")
         except Exception as e:
@@ -584,13 +604,13 @@ class ManualControl:
                 # Handle button presses
                 if event.type == pygame.JOYBUTTONDOWN:
                     if event.button == self.BUTTON_A:  # Z up
-                        self.current_z += self.z_increment
-                        self.robot.move_z(self.z_increment)
-                        self.robot.send_command(f"u{self.z_increment}")
+                        self.current_z += 100  # Changed to 100 steps
+                        self.robot.move_z(100)  # Changed to 100 steps
+                        self.robot.send_command(f"u{10}")  # Keep small increments for smoother movement
                     elif event.button == self.BUTTON_X:  # Z down
-                        self.current_z -= self.z_increment
-                        self.robot.move_z(-self.z_increment)
-                        self.robot.send_command(f"d{self.z_increment}")
+                        self.current_z -= 100  # Changed to 100 steps
+                        self.robot.move_z(-100)  # Changed to 100 steps
+                        self.robot.send_command(f"d{10}")  # Keep small increments for smoother movement
                     elif event.button == self.BUTTON_B:  # Yaw right
                         self.current_yaw += self.yaw_increment
                         self.robot.move_yaw(self.yaw_increment)
@@ -600,9 +620,9 @@ class ManualControl:
                         self.robot.move_yaw(-self.yaw_increment)
                         self.robot.send_command(f"l{self.yaw_increment}")
                     elif event.button == self.BUTTON_LB:  # Rotate gripper left
-                        self.robot.rotate_gripper('left', 10)
+                        self.robot.rotate_gripper('left', 30)
                     elif event.button == self.BUTTON_RB:  # Rotate gripper right
-                        self.robot.rotate_gripper('right', 10)
+                        self.robot.rotate_gripper('right', 30)
                     elif event.button == self.BUTTON_BACK:
                         self.running = False  # Stop manual control
                         break

@@ -28,6 +28,7 @@ TaskHandle_t monitorTaskHandle = NULL;
 
 // Queue handles
 QueueHandle_t commandQueue;
+QueueHandle_t zCommandQueue;
 QueueHandle_t positionQueue;
 
 // Mutex for protecting shared resources
@@ -125,6 +126,7 @@ void setup()
   positionMutex = xSemaphoreCreateMutex();
   serialMutex = xSemaphoreCreateMutex();
   commandQueue = xQueueCreate(10, sizeof(Command));
+  zCommandQueue = xQueueCreate(5, sizeof(Command));
   positionQueue = xQueueCreate(5, sizeof(Position));
 
   // Setup for servos
@@ -248,7 +250,27 @@ void serialTask(void *parameter) {
       if (inChar == '\n') {
         Command cmd;
         parseCommand(inputString, &cmd);
-        xQueueSend(commandQueue, &cmd, portMAX_DELAY);
+        
+        // Debug print before sending to queue
+        if (xSemaphoreTake(serialMutex, portMAX_DELAY)) {
+          Serial.print("Sending command to queue - Type: ");
+          Serial.print(cmd.type);
+          Serial.print(", Value: ");
+          Serial.println(cmd.value1);
+          xSemaphoreGive(serialMutex);
+        }
+        
+        // Route commands to appropriate queues
+        if (cmd.type == 'Z') {
+          xQueueSend(zCommandQueue, &cmd, portMAX_DELAY);
+          if (xSemaphoreTake(serialMutex, portMAX_DELAY)) {
+            Serial.println("Z command sent to Z queue");
+            xSemaphoreGive(serialMutex);
+          }
+        } else {
+          xQueueSend(commandQueue, &cmd, portMAX_DELAY);
+        }
+        
         inputString = "";
       } else {
         inputString += inChar;
@@ -273,9 +295,19 @@ void parseCommand(String input, Command* cmd) {
   } else if (input.startsWith("u")) {
     cmd->type = 'Z';
     cmd->value1 = input.substring(1).toFloat();
+    if (xSemaphoreTake(serialMutex, portMAX_DELAY)) {
+      Serial.print("Up command received: ");
+      Serial.println(cmd->value1);
+      xSemaphoreGive(serialMutex);
+    }
   } else if (input.startsWith("d")) {
     cmd->type = 'Z';
     cmd->value1 = -input.substring(1).toFloat();
+    if (xSemaphoreTake(serialMutex, portMAX_DELAY)) {
+      Serial.print("Down command received: ");
+      Serial.println(cmd->value1);
+      xSemaphoreGive(serialMutex);
+    }
   } else if (input.startsWith("l")) {
     cmd->type = 'Y';
     cmd->value1 = -input.substring(1).toFloat();
@@ -343,8 +375,20 @@ void zAxisTask(void *parameter) {
   Command cmd;
   
   while (true) {
-    if (xQueueReceive(commandQueue, &cmd, portMAX_DELAY)) {
+    if (xQueueReceive(zCommandQueue, &cmd, portMAX_DELAY)) {
+      if (xSemaphoreTake(serialMutex, portMAX_DELAY)) {
+        Serial.print("Z task received command - Type: ");
+        Serial.print(cmd.type);
+        Serial.print(", Value: ");
+        Serial.println(cmd.value1);
+        xSemaphoreGive(serialMutex);
+      }
+      
       if (cmd.type == 'Z') {
+        if (xSemaphoreTake(serialMutex, portMAX_DELAY)) {
+          Serial.println("Processing Z movement command");
+          xSemaphoreGive(serialMutex);
+        }
         moveStepsZ(cmd.value1);
       }
     }
@@ -528,9 +572,26 @@ void moveToPosition(float x, float y) {
 }
 
 void moveStepsZ(int steps) {
+    // Print initial debug info
+    if (xSemaphoreTake(serialMutex, portMAX_DELAY)) {
+        Serial.print("moveStepsZ called with steps: ");
+        Serial.println(steps);
+        xSemaphoreGive(serialMutex);
+    }
+
     // Calculate new position before moving
     if (xSemaphoreTake(positionMutex, portMAX_DELAY)) {
         int newPosition = currentPosition.z + steps;
+        
+        if (xSemaphoreTake(serialMutex, portMAX_DELAY)) {
+            Serial.print("Current Z: ");
+            Serial.print(currentPosition.z);
+            Serial.print(", Steps: ");
+            Serial.print(steps);
+            Serial.print(", New Position would be: ");
+            Serial.println(newPosition);
+            xSemaphoreGive(serialMutex);
+        }
         
         // Check if movement would exceed limits
         if (newPosition < Z_MIN_POSITION) {
@@ -554,6 +615,16 @@ void moveStepsZ(int steps) {
 
     // Set direction
     digitalWrite(DIR_PIN_Z, steps > 0 ? HIGH : LOW);
+    
+    if (xSemaphoreTake(serialMutex, portMAX_DELAY)) {
+        Serial.print("Setting direction pin to: ");
+        Serial.println(steps > 0 ? "HIGH" : "LOW");
+        Serial.print("DIR_PIN_Z: ");
+        Serial.print(DIR_PIN_Z);
+        Serial.print(", STEP_PIN_Z: ");
+        Serial.println(STEP_PIN_Z);
+        xSemaphoreGive(serialMutex);
+    }
 
     // Move stepper
     for (int i = 0; i < abs(steps); i++) {
@@ -574,6 +645,14 @@ void moveStepsZ(int steps) {
         delayMicroseconds(stepDelay);
         digitalWrite(STEP_PIN_Z, LOW);
         delayMicroseconds(stepDelay);
+        
+        if (i % 10 == 0 && xSemaphoreTake(serialMutex, portMAX_DELAY)) {
+            Serial.print("Step ");
+            Serial.print(i + 1);
+            Serial.print(" of ");
+            Serial.println(abs(steps));
+            xSemaphoreGive(serialMutex);
+        }
     }
 
     // Update position
@@ -583,7 +662,7 @@ void moveStepsZ(int steps) {
     }
 
     if (xSemaphoreTake(serialMutex, portMAX_DELAY)) {
-        Serial.print("Z Lift Position: ");
+        Serial.print("Z Lift Position updated to: ");
         Serial.println(currentPosition.z);
         xSemaphoreGive(serialMutex);
     }
