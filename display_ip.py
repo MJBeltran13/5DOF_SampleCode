@@ -2,9 +2,9 @@ import board
 import busio
 import digitalio
 from PIL import Image, ImageDraw, ImageFont
-import adafruit_ssd1327
-import time
+import adafruit_ssd1306
 import socket
+import time
 
 class IPDisplay:
     def __init__(self):
@@ -12,16 +12,20 @@ class IPDisplay:
         self.i2c = busio.I2C(board.SCL, board.SDA)
         reset_pin = digitalio.DigitalInOut(board.D4)
         
-        self.display = adafruit_ssd1327.SSD1327_I2C(
+        # Create display with SSD1306 driver (128x128 pixels)
+        self.display = adafruit_ssd1306.SSD1306_I2C(
             128, 128, self.i2c, addr=0x3C, reset=reset_pin
         )
         
+        # Clear the display
         self.display.fill(0)
         self.display.show()
 
-        # Image in "L" mode for grayscale
-        self.image = Image.new("L", (128, 128))
+        # Create image for drawing (mode '1' is 1-bit color)
+        self.image = Image.new("1", (128, 128))
         self.draw = ImageDraw.Draw(self.image)
+        
+        # Load default font
         self.font = ImageFont.load_default()
 
     def get_ip_address(self):
@@ -35,11 +39,18 @@ class IPDisplay:
             return "No IP"
 
     def update_display(self):
-        self.draw.rectangle((0, 0, 128, 128), fill=0)
+        # Clear display (fill with white for better visibility)
+        self.draw.rectangle((0, 0, 128, 128), outline=1, fill=1)
+        
+        # Get IP address
         ip = self.get_ip_address()
-        self.draw.text((0, 20), "Robot Control", font=self.font, fill=255)
-        self.draw.text((0, 50), "IP: " + ip, font=self.font, fill=255)
-        self.draw.text((0, 80), "Port: 5000", font=self.font, fill=255)
+        
+        # Draw text in black on white background
+        self.draw.text((0, 20), "Robot Control", font=self.font, fill=0)
+        self.draw.text((0, 50), "IP: " + ip, font=self.font, fill=0)
+        self.draw.text((0, 80), "Port: 5000", font=self.font, fill=0)
+        
+        # Display the image
         self.display.image(self.image)
         self.display.show()
 
