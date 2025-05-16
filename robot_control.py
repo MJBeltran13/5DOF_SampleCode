@@ -53,13 +53,16 @@ class ScaraRobot:
         self.serial_history = deque(maxlen=100)  # Keep last 100 messages
         
         # Serial connection settings
-        self.com_port = '/dev/ttyUSB9'  # Default port for Raspberry Pi
+        self.com_port = '/dev/ttyUSB0'  # Default port for Raspberry Pi
         self.baudrate = 115200   # Set default baudrate to 115200
         self.ser = None
         self.last_error = None
+        self.status = "Not connected"
         
-        # Automatically connect on initialization
-        self.connect_serial()
+        # Add initial status to history
+        self.add_to_history("System", "Robot control initialized. Please connect to a serial port.")
+        
+        # Removed auto-connect on initialization
 
     def disconnect_serial(self):
         """Disconnect from serial port"""
