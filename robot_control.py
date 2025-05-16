@@ -856,10 +856,16 @@ if __name__ == '__main__':
     url = f"http://{local_ip}"
     print(f"Server running at: {url}")
     
-    # Open browser after a short delay to ensure server is running
+    # Open Chromium browser after a short delay to ensure server is running
     def open_browser():
         time.sleep(1.5)  # Wait for server to start
-        webbrowser.open(url)
+        try:
+            # Try to open with Chromium (Raspberry Pi default)
+            webbrowser.get('chromium-browser').open(url)
+        except webbrowser.Error:
+            # Fall back to default browser if Chromium is not available
+            print("Chromium not found, trying default browser")
+            webbrowser.open(url)
     
     # Start browser in a separate thread
     threading.Thread(target=open_browser).start()
