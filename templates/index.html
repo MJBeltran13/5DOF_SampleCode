@@ -736,11 +736,21 @@
         let isGripperOpen = true;
         let gripperRotation = 90; // Initial gripper rotation angle
 
-        // Add auto-enable manual control after 2 seconds
+        // Add auto-enable manual control after 2 seconds and auto-connect after 5 seconds
         window.addEventListener('load', function() {
+            // Auto-enable manual control
             setTimeout(function() {
                 document.getElementById('toggleManual').click();
             }, 2000);
+
+            // Auto-connect to COM11
+            setTimeout(function() {
+                document.getElementById('com-port').value = 'COM11';
+                document.getElementById('baudrate').value = '115200';
+                updateSerialSettings();
+                console.log("Auto-connecting to COM11 at 115200 baud...");
+            }, 1000);
+
             // Initial position update
             updateAllPositions();
         });

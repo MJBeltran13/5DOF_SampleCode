@@ -344,8 +344,7 @@ void serialTask(void *parameter)
                         Serial.println("OK");  // Send acknowledgment
                         xSemaphoreGive(serialMutex);
                     }
-                    updateDisplay();  // Update display immediately
-                    lastDisplayUpdate = millis();  // Reset the display update timer
+                    updateDisplay();  // Update display immediately when IP changes
                 }
                 else
                 {
@@ -383,14 +382,6 @@ void serialTask(void *parameter)
             {
                 inputString += inChar;
             }
-        }
-        
-        // Update display periodically
-        unsigned long currentMillis = millis();
-        if (currentMillis - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL)
-        {
-            updateDisplay();
-            lastDisplayUpdate = currentMillis;
         }
         
         vTaskDelay(pdMS_TO_TICKS(10));
@@ -593,6 +584,7 @@ void monitorTask(void *parameter)
             xSemaphoreGive(positionMutex);
 
             xQueueSend(positionQueue, &pos, 0);
+            updateDisplay();  // Update display when monitoring position
         }
         vTaskDelay(pdMS_TO_TICKS(100)); // Update position every 100ms
     }
@@ -708,6 +700,8 @@ void moveToAngles(float angle1, float angle2)
 
         xSemaphoreGive(positionMutex);
     }
+
+    updateDisplay();  // Update display after position change
 
     if (xSemaphoreTake(serialMutex, portMAX_DELAY))
     {
@@ -860,6 +854,8 @@ void moveStepsZ(int steps)
         xSemaphoreGive(positionMutex);
     }
 
+    updateDisplay();  // Update display after Z position change
+
     if (xSemaphoreTake(serialMutex, portMAX_DELAY))
     {
         Serial.print("Z Lift Position updated to: ");
@@ -908,6 +904,8 @@ void moveStepsYaw(int direction, int steps)
         currentPosition.yaw += (direction * steps);  // Update position based on direction
         xSemaphoreGive(positionMutex);
     }
+
+    updateDisplay();  // Update display after yaw change
 }
 
 // Add function for rotating the gripper
@@ -924,6 +922,8 @@ void rotateGripper(int degrees)
         // Move to new position
         myservo4.write(newAngle);
         currentPosition.gripperRotation = newAngle;
+
+        updateDisplay();  // Update display after gripper rotation
 
         if (xSemaphoreTake(serialMutex, portMAX_DELAY))
         {
@@ -950,6 +950,8 @@ void openGripper()
         xSemaphoreGive(positionMutex);
     }
 
+    updateDisplay();  // Update display after gripper state change
+
     if (xSemaphoreTake(serialMutex, portMAX_DELAY))
     {
         Serial.println("Gripper opened");
@@ -967,6 +969,8 @@ void closeGripper()
         currentPosition.isGripperOpen = false;
         xSemaphoreGive(positionMutex);
     }
+
+    updateDisplay();  // Update display after gripper state change
 
     if (xSemaphoreTake(serialMutex, portMAX_DELAY))
     {

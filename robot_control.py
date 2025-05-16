@@ -10,6 +10,7 @@ import traceback
 import pygame
 import threading
 import socket
+import webbrowser
 
 def get_local_ip():
     try:
@@ -52,25 +53,47 @@ class ScaraRobot:
         self.serial_history = deque(maxlen=100)  # Keep last 100 messages
         
         # Serial connection settings
-        self.com_port = 'COM1'
-        self.baudrate = 115200
+        self.com_port = 'COM1'  # Set default COM port to COM11
+        self.baudrate = 115200   # Set default baudrate to 115200
         self.ser = None
-        self.connect_serial()
         self.last_error = None
+        
+        # Automatically connect on initialization
+        self.connect_serial()
 
     def disconnect_serial(self):
         """Disconnect from serial port"""
-        if self.ser and self.ser.is_open:
-            self.ser.close()
+        try:
+            if self.ser and self.ser.is_open:
+                self.ser.close()
+                time.sleep(0.5)  # Wait for port to fully close
             self.ser = None
             self.status = f"Disconnected from {self.com_port}"
             self.add_to_history("System", self.status)
             return True
-        return False
+        except Exception as e:
+            self.status = f"Error disconnecting: {str(e)}"
+            self.add_to_history("Error", self.status)
+            return False
 
     def read_serial_response(self):
         """Read and decode serial response with multiple encoding attempts"""
         try:
+            if not self.ser or not self.ser.is_open:
+                return None
+
+            # Wait for data to be available
+            start_time = time.time()
+            while time.time() - start_time < 1.0:  # Timeout after 1 second
+                if self.ser and self.ser.is_open and self.ser.in_waiting > 0:
+                    break
+                time.sleep(0.01)
+            else:
+                return None  # Timeout reached
+
+            if not self.ser or not self.ser.is_open:
+                return None
+
             raw_response = self.ser.readline()
             if not raw_response:
                 return None
@@ -97,33 +120,57 @@ class ScaraRobot:
 
     def connect_serial(self, port=None, baud=None):
         """Connect to serial port with given settings"""
-        if port:
-            self.com_port = port
-        if baud:
-            self.baudrate = baud
-
-        # Close existing connection if any
-        self.disconnect_serial()
-
         try:
+            if port:
+                self.com_port = port
+            if baud:
+                self.baudrate = baud
+
+            # If already connected to the same port, disconnect first
+            if self.ser and self.ser.is_open:
+                if self.ser.port == self.com_port:
+                    self.add_to_history("System", "Already connected to this port. Disconnecting first...")
+                    self.disconnect_serial()
+                    time.sleep(1)  # Wait a bit before reconnecting
+
             # Import serial here to ensure it's available
             import serial
-            self.ser = serial.Serial(
-                port=self.com_port,
-                baudrate=self.baudrate,
-                timeout=1,
-                bytesize=serial.EIGHTBITS,
-                parity=serial.PARITY_NONE,
-                stopbits=serial.STOPBITS_ONE
-            )
-            
+
+            try:
+                self.ser = serial.Serial(
+                    port=self.com_port,
+                    baudrate=self.baudrate,
+                    timeout=1,
+                    bytesize=serial.EIGHTBITS,
+                    parity=serial.PARITY_NONE,
+                    stopbits=serial.STOPBITS_ONE
+                )
+            except serial.SerialException as e:
+                self.ser = None
+                if "PermissionError" in str(e) or "Access is denied" in str(e):
+                    self.status = f"Port {self.com_port} is in use or access denied. Please disconnect first."
+                else:
+                    self.status = f"Failed to connect to {self.com_port}: {str(e)}"
+                self.add_to_history("Error", self.status)
+                return False
+
+            # Verify the connection is open
+            if not self.ser or not self.ser.is_open:
+                self.status = f"Failed to open connection to {self.com_port}"
+                self.add_to_history("Error", self.status)
+                return False
+
             # Wait for Arduino to reset and send startup messages
             time.sleep(2)
+            
+            # Clear any pending data
+            self.ser.reset_input_buffer()
+            self.ser.reset_output_buffer()
             
             # Read any available startup messages
             start_time = time.time()
             while time.time() - start_time < 3:  # Wait up to 3 seconds for startup messages
-                if self.ser.in_waiting:
+                if self.ser and self.ser.is_open and self.ser.in_waiting:
                     response = self.read_serial_response()
                     if response:
                         self.add_to_history("← Startup", response)
@@ -132,19 +179,22 @@ class ScaraRobot:
             # Send local IP address to ESP32
             local_ip = get_local_ip()
             ip_command = f"IP:{local_ip}\n"
-            self.ser.write(ip_command.encode())
-            time.sleep(0.1)  # Wait a bit for ESP32 to process
-            
-            # Read acknowledgment
-            response = self.read_serial_response()
-            if response and "OK" in response:
-                self.add_to_history("System", f"ESP32 acknowledged IP: {local_ip}")
-            else:
-                self.add_to_history("Warning", "ESP32 did not acknowledge IP address")
+            if self.ser and self.ser.is_open:
+                self.ser.write(ip_command.encode())
+                self.ser.flush()  # Ensure the command is sent
+                time.sleep(0.1)  # Wait a bit for ESP32 to process
+                
+                # Read acknowledgment
+                response = self.read_serial_response()
+                if response and "OK" in response:
+                    self.add_to_history("System", f"ESP32 acknowledged IP: {local_ip}")
+                else:
+                    self.add_to_history("Warning", "ESP32 did not acknowledge IP address")
                     
             self.status = f"Connected to {self.com_port} at {self.baudrate} baud"
             self.add_to_history("System", self.status)
             return True
+
         except ImportError:
             self.status = "Failed to import serial module. Please install pyserial: pip install pyserial"
             self.add_to_history("System", self.status)
@@ -190,10 +240,19 @@ class ScaraRobot:
             if not self.ser or not self.ser.is_open:
                 self.last_error = "Not connected to Arduino"
                 self.add_to_history("Error", self.last_error)
-                return None
+                # Try to reconnect
+                if self.connect_serial():
+                    self.add_to_history("System", "Reconnected successfully")
+                else:
+                    return None
 
-            self.add_to_history("→ Sent", cmd)
-            self.ser.write(f"{cmd}\n".encode())
+            # Add newline if not present
+            if not cmd.endswith('\n'):
+                cmd = cmd + '\n'
+
+            self.add_to_history("→ Sent", cmd.strip())
+            self.ser.write(cmd.encode())
+            self.ser.flush()  # Ensure the command is sent
             time.sleep(0.1)  # Wait for command to process
             
             try:
@@ -206,6 +265,9 @@ class ScaraRobot:
             except serial.SerialException as e:
                 self.last_error = f"Serial communication error: {str(e)}"
                 self.add_to_history("Error", self.last_error)
+                # Try to reconnect on error
+                if "PermissionError" not in str(e) and self.connect_serial():
+                    self.add_to_history("System", "Reconnected after error")
                 return None
             except Exception as e:
                 self.last_error = f"Error reading response: {str(e)}"
@@ -222,22 +284,25 @@ class ScaraRobot:
     def move_z(self, steps):
         """Move Z axis with error handling"""
         try:
+            command = None
             if steps > 0:
-                response = self.send_command(f"u{abs(steps)}")
+                command = f"u{abs(steps)}"
             else:
-                response = self.send_command(f"d{abs(steps)}")
+                command = f"d{abs(steps)}"
             
-            if response is None:
-                return {'success': False, 'message': self.last_error}
-            
-            # Update Z position
-            self.current_z += steps
-            
-            return {
-                'success': True,
-                'message': response,
-                'z': self.current_z
-            }
+            if command:
+                response = self.send_command(command)
+                if response is None:
+                    return {'success': False, 'message': self.last_error}
+                
+                # Update Z position
+                self.current_z += steps
+                
+                return {
+                    'success': True,
+                    'message': response,
+                    'z': self.current_z
+                }
         except Exception as e:
             self.last_error = f"Z movement failed: {str(e)}"
             return {'success': False, 'message': self.last_error}
@@ -245,22 +310,25 @@ class ScaraRobot:
     def move_yaw(self, steps):
         """Move Yaw with error handling"""
         try:
+            command = None
             if steps > 0:
-                response = self.send_command(f"r{abs(steps)}")
+                command = f"r{abs(steps)}"
             else:
-                response = self.send_command(f"l{abs(steps)}")
+                command = f"l{abs(steps)}"
             
-            if response is None:
-                return {'success': False, 'message': self.last_error}
-            
-            # Update Yaw position
-            self.current_yaw += steps
-            
-            return {
-                'success': True,
-                'message': response,
-                'yaw': self.current_yaw
-            }
+            if command:
+                response = self.send_command(command)
+                if response is None:
+                    return {'success': False, 'message': self.last_error}
+                
+                # Update Yaw position
+                self.current_yaw += steps
+                
+                return {
+                    'success': True,
+                    'message': response,
+                    'yaw': self.current_yaw
+                }
         except Exception as e:
             self.last_error = f"Yaw movement failed: {str(e)}"
             return {'success': False, 'message': self.last_error}
@@ -712,7 +780,10 @@ def move_z():
         data = request.get_json()
         steps = int(data['steps'])
         result = robot.move_z(steps)
-        return jsonify(result)
+        if result['success']:
+            return jsonify(result)
+        else:
+            return jsonify(result), 400
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 400
 
@@ -722,7 +793,10 @@ def move_yaw():
         data = request.get_json()
         steps = int(data['steps'])
         result = robot.move_yaw(steps)
-        return jsonify(result)
+        if result['success']:
+            return jsonify(result)
+        else:
+            return jsonify(result), 400
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 400
 
@@ -750,9 +824,15 @@ def update_angles():
 
 @app.route('/toggle_gripper', methods=['POST'])
 def toggle_gripper():
-    data = request.get_json()
-    result = robot.toggle_gripper(data['is_open'])
-    return jsonify(result)
+    try:
+        data = request.get_json()
+        result = robot.toggle_gripper(data['is_open'])
+        if result['success']:
+            return jsonify(result)
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 400
 
 @app.route('/rotate_gripper', methods=['POST'])
 def rotate_gripper():
@@ -773,7 +853,18 @@ def toggle_manual_mode():
 
 if __name__ == '__main__':
     local_ip = get_local_ip()
-    print(f"Server running at: http://{local_ip}")
+    url = f"http://{local_ip}"
+    print(f"Server running at: {url}")
+    
+    # Open browser after a short delay to ensure server is running
+    def open_browser():
+        time.sleep(1.5)  # Wait for server to start
+        webbrowser.open(url)
+    
+    # Start browser in a separate thread
+    threading.Thread(target=open_browser).start()
+    
+    # Run the Flask server
     app.run(host='0.0.0.0', port=5000, debug=True)  # Allow external access
 
 # how to run the code
