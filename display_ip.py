@@ -6,15 +6,18 @@ import adafruit_ssd1306
 import socket
 import time
 
+# Display configuration
+WIDTH = 128
+HEIGHT = 64  # Standard OLED display size
+
 class IPDisplay:
     def __init__(self):
         # I2C setup
         self.i2c = busio.I2C(board.SCL, board.SDA)
-        reset_pin = digitalio.DigitalInOut(board.D4)
         
-        # Create display with SSD1306 driver (128x128 pixels)
+        # Create display without reset pin
         self.display = adafruit_ssd1306.SSD1306_I2C(
-            128, 128, self.i2c, addr=0x3C, reset=reset_pin
+            WIDTH, HEIGHT, self.i2c, addr=0x3C
         )
         
         # Clear the display
@@ -22,7 +25,7 @@ class IPDisplay:
         self.display.show()
 
         # Create image for drawing (mode '1' is 1-bit color)
-        self.image = Image.new("1", (128, 128))
+        self.image = Image.new("1", (WIDTH, HEIGHT))
         self.draw = ImageDraw.Draw(self.image)
         
         # Load default font
@@ -40,15 +43,15 @@ class IPDisplay:
 
     def update_display(self):
         # Clear display (fill with white for better visibility)
-        self.draw.rectangle((0, 0, 128, 128), outline=1, fill=1)
+        self.draw.rectangle((0, 0, WIDTH, HEIGHT), outline=1, fill=1)
         
         # Get IP address
         ip = self.get_ip_address()
         
-        # Draw text in black on white background
-        self.draw.text((0, 20), "Robot Control", font=self.font, fill=0)
-        self.draw.text((0, 50), "IP: " + ip, font=self.font, fill=0)
-        self.draw.text((0, 80), "Port: 5000", font=self.font, fill=0)
+        # Draw text in black on white background - adjusted for smaller height
+        self.draw.text((0, 5), "Robot Control", font=self.font, fill=0)
+        self.draw.text((0, 25), "IP: " + ip, font=self.font, fill=0)
+        self.draw.text((0, 45), "Port: 5000", font=self.font, fill=0)
         
         # Display the image
         self.display.image(self.image)
