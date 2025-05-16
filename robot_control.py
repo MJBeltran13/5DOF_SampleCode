@@ -160,8 +160,8 @@ class ScaraRobot:
                 self.add_to_history("Error", self.status)
                 return False
 
-            # Wait for Arduino to reset and send startup messages
-            time.sleep(2)
+            # Wait for Arduino/ESP32 to reset and send startup messages
+            time.sleep(3)  # Increased from 2 to 3 seconds for Raspberry Pi
             
             # Clear any pending data
             self.ser.reset_input_buffer()
@@ -179,17 +179,38 @@ class ScaraRobot:
             # Send local IP address to ESP32
             local_ip = get_local_ip()
             ip_command = f"IP:{local_ip}\n"
-            if self.ser and self.ser.is_open:
-                self.ser.write(ip_command.encode())
-                self.ser.flush()  # Ensure the command is sent
-                time.sleep(0.1)  # Wait a bit for ESP32 to process
-                
-                # Read acknowledgment
-                response = self.read_serial_response()
-                if response and "OK" in response:
-                    self.add_to_history("System", f"ESP32 acknowledged IP: {local_ip}")
+            
+            # Try sending the IP command up to 3 times
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                if self.ser and self.ser.is_open:
+                    self.add_to_history("→ Sent", f"IP command (attempt {attempt+1}): {ip_command.strip()}")
+                    self.ser.write(ip_command.encode())
+                    self.ser.flush()  # Ensure the command is sent
+                    
+                    # Give more time for ESP32 to process and respond
+                    time.sleep(0.5)  # Increased from 0.1 to 0.5 seconds
+                    
+                    # Read acknowledgment with multiple attempts
+                    for _ in range(5):  # Try reading response up to 5 times
+                        if self.ser and self.ser.is_open and self.ser.in_waiting > 0:
+                            response = self.read_serial_response()
+                            if response:
+                                self.add_to_history("← Received", response)
+                                if "OK" in response or "ACK" in response or "IP" in response:
+                                    self.add_to_history("System", f"ESP32 acknowledged IP: {local_ip}")
+                                    break
+                        time.sleep(0.1)
+                    
+                    # If we got a response with OK, break the retry loop
+                    if response and ("OK" in response or "ACK" in response or "IP" in response):
+                        break
+                        
+                    # If this was the last attempt and still no acknowledgment
+                    if attempt == max_attempts - 1:
+                        self.add_to_history("Warning", "ESP32 did not acknowledge IP address after multiple attempts")
                 else:
-                    self.add_to_history("Warning", "ESP32 did not acknowledge IP address")
+                    break
                     
             self.status = f"Connected to {self.com_port} at {self.baudrate} baud"
             self.add_to_history("System", self.status)
