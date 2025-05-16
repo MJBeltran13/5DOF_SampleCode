@@ -1,10 +1,18 @@
 from robot_control import app
-
-# Static Raspberry Pi IP address
-RASPBERRY_PI_IP = '192.168.101.252'
+from display_ip import IPDisplay
+import threading
 
 if __name__ == '__main__':
-    print(f"Access the server at: http://{RASPBERRY_PI_IP}:5000")
-    print("Running server on all interfaces...")
-    # Run the server on all interfaces (0.0.0.0) but display Raspberry Pi IP for access
+    # Start the display in a separate thread
+    try:
+        display = IPDisplay()
+        display_thread = threading.Thread(target=display.run, daemon=True)
+        display_thread.start()
+        print("IP Display started")
+    except Exception as e:
+        print(f"Could not initialize display: {e}")
+        print("Continuing without display...")
+
+    # Run the server on all interfaces
+    print("Running server on port 5000...")
     app.run(host='0.0.0.0', port=5000, debug=True)
