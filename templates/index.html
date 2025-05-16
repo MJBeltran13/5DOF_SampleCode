@@ -1183,6 +1183,20 @@
         // Load initial settings
         loadSerialSettings();
 
+        // Auto-connect to the first port (which will be /dev/ttyUSB0) after 2 seconds
+        setTimeout(function() {
+            const portSelect = document.getElementById('com-port');
+            if (portSelect.options.length > 0) {
+                // Select the first option (which should be /dev/ttyUSB0)
+                portSelect.selectedIndex = 0;
+                // Set baudrate to 115200
+                document.getElementById('baudrate').value = '115200';
+                // Auto-connect
+                updateSerialSettings();
+                console.log("Auto-connecting to " + portSelect.value + " at 115200 baud...");
+            }
+        }, 2000);
+
         // Manual control toggle
         document.getElementById('toggleManual').addEventListener('click', function() {
             const isManual = document.getElementById('manualStatus').textContent.includes('Enabled');

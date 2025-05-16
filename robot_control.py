@@ -53,7 +53,7 @@ class ScaraRobot:
         self.serial_history = deque(maxlen=100)  # Keep last 100 messages
         
         # Serial connection settings
-        self.com_port = 'COM1'  # Set default COM port to COM11
+        self.com_port = '/dev/ttyUSB9'  # Default port for Raspberry Pi
         self.baudrate = 115200   # Set default baudrate to 115200
         self.ser = None
         self.last_error = None
@@ -208,12 +208,52 @@ class ScaraRobot:
     def get_available_ports(self):
         """Get list of available COM ports"""
         ports = []
+        
+        # Create a list to store all detected ports
+        detected_ports = []
         for port in serial.tools.list_ports.comports():
-            ports.append({
+            detected_ports.append({
                 'port': port.device,
                 'description': port.description,
                 'hwid': port.hwid
             })
+        
+        # Always add /dev/ttyUSB0 as the first option
+        ttyUSB0_exists = False
+        for port in detected_ports:
+            if port['port'] == '/dev/ttyUSB0':
+                ttyUSB0_exists = True
+                ports.append(port)
+                break
+        
+        if not ttyUSB0_exists:
+            ports.append({
+                'port': '/dev/ttyUSB0',
+                'description': 'Raspberry Pi USB Serial Port',
+                'hwid': 'N/A'
+            })
+        
+        # Add all other detected ports
+        for port in detected_ports:
+            if port['port'] != '/dev/ttyUSB0':
+                ports.append(port)
+        
+        # Add other common Raspberry Pi ports if they're not already in the list
+        raspbi_ports = [
+            '/dev/ttyUSB1', 
+            '/dev/ttyACM0', '/dev/ttyACM1',
+            '/dev/ttyAMA0', '/dev/serial0'
+        ]
+        
+        existing_ports = [p['port'] for p in ports]
+        for port in raspbi_ports:
+            if port not in existing_ports:
+                ports.append({
+                    'port': port,
+                    'description': 'Raspberry Pi port',
+                    'hwid': 'N/A'
+                })
+        
         return ports
 
     def get_current_settings(self):
