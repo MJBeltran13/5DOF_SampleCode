@@ -111,17 +111,17 @@ class IPDisplay:
             return
             
         try:
-            # Clear the image
-            self.draw.rectangle((0, 0, self.display.width, self.display.height), outline=0, fill=0)
+            # Clear the image with white background (1 instead of 0)
+            self.draw.rectangle((0, 0, self.display.width, self.display.height), outline=1, fill=1)
             
             # Get IP address
             ip = self.get_ip_address()
             
-            # Draw the text
-            self.draw.text((0, 20), "Robot Control", font=self.font, fill=255)
-            self.draw.text((0, 45), "IP Address:", font=self.small_font, fill=255)
-            self.draw.text((0, 65), ip, font=self.font, fill=255)
-            self.draw.text((0, 90), "Port: 5000", font=self.small_font, fill=255)
+            # Draw the text in black (0 instead of 255)
+            self.draw.text((0, 20), "Robot Control", font=self.font, fill=0)
+            self.draw.text((0, 45), "IP Address:", font=self.small_font, fill=0)
+            self.draw.text((0, 65), ip, font=self.font, fill=0)
+            self.draw.text((0, 90), "Port: 5000", font=self.small_font, fill=0)
             
             # Display image
             self.display.image(self.image)
