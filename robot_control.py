@@ -9,6 +9,20 @@ from datetime import datetime
 import traceback
 import pygame
 import threading
+import socket
+
+def get_local_ip():
+    try:
+        # Create a socket object
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # Connect to an external server (doesn't actually send any data)
+        s.connect(('8.8.8.8', 80))
+        # Get the local IP address
+        local_ip = s.getsockname()[0]
+        s.close()
+        return local_ip
+    except Exception:
+        return '127.0.0.1'
 
 app = Flask(__name__)
 
@@ -639,7 +653,8 @@ robot = ScaraRobot()
 
 @app.route('/')
 def home():
-    return render_template('index.html')
+    ip_address = get_local_ip()
+    return render_template('index.html', ip_address=ip_address)
 
 @app.route('/disconnect_serial', methods=['POST'])
 def disconnect_serial():
