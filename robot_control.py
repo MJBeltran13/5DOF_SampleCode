@@ -20,9 +20,9 @@ def get_local_ip():
         # Get the local IP address
         local_ip = s.getsockname()[0]
         s.close()
-        return local_ip
+        return f"{local_ip}:5000"
     except Exception:
-        return '127.0.0.1'
+        return '127.0.0.1:5000'
 
 app = Flask(__name__)
 
@@ -52,8 +52,8 @@ class ScaraRobot:
         self.serial_history = deque(maxlen=100)  # Keep last 100 messages
         
         # Serial connection settings
-        self.com_port = 'COM3'
-        self.baudrate = 9600
+        self.com_port = 'COM1'
+        self.baudrate = 115200
         self.ser = None
         self.connect_serial()
         self.last_error = None
@@ -128,6 +128,19 @@ class ScaraRobot:
                     if response:
                         self.add_to_history("← Startup", response)
                 time.sleep(0.1)
+            
+            # Send local IP address to ESP32
+            local_ip = get_local_ip()
+            ip_command = f"IP:{local_ip}\n"
+            self.ser.write(ip_command.encode())
+            time.sleep(0.1)  # Wait a bit for ESP32 to process
+            
+            # Read acknowledgment
+            response = self.read_serial_response()
+            if response and "OK" in response:
+                self.add_to_history("System", f"ESP32 acknowledged IP: {local_ip}")
+            else:
+                self.add_to_history("Warning", "ESP32 did not acknowledge IP address")
                     
             self.status = f"Connected to {self.com_port} at {self.baudrate} baud"
             self.add_to_history("System", self.status)
@@ -759,7 +772,9 @@ def toggle_manual_mode():
     return jsonify(result)
 
 if __name__ == '__main__':
-    app.run(debug=True) 
+    local_ip = get_local_ip()
+    print(f"Server running at: http://{local_ip}")
+    app.run(host='0.0.0.0', port=5000, debug=True)  # Allow external access
 
 # how to run the code
 # python robot_control.py

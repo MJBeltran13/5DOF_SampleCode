@@ -2,6 +2,23 @@
 #include <math.h> // for sin(), cos()
 #include "soc/timer_group_struct.h"
 #include "soc/timer_group_reg.h"
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1327.h>
+#include <Wire.h>
+
+// OLED Display Configuration
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 128
+#define OLED_ADDRESS 0x3C  // Common I2C address for SSD1327
+
+Adafruit_SSD1327 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);  // -1 = no reset pin
+
+// IP address storage
+String serverIP = "Not Connected";
+
+// Display settings
+unsigned long lastDisplayUpdate = 0;
+const unsigned long DISPLAY_UPDATE_INTERVAL = 1000; // Update every second
 
 // ESP32 FreeRTOS - these are automatically included with ESP32 core
 // No need to explicitly include FreeRTOS headers as they are part of the ESP32 core
@@ -121,10 +138,73 @@ void zAxisTask(void *parameter);
 void yawTask(void *parameter);
 void monitorTask(void *parameter);
 
+// Function declarations
+void setupLCD();
+void updateDisplay();
+
+void setupLCD() {
+    Serial.println("Initializing OLED...");
+    
+    if (!display.begin(OLED_ADDRESS)) {
+        Serial.println("SSD1327 allocation failed. Check wiring or address.");
+        return;
+    }
+    
+    Serial.println("OLED initialized successfully!");
+    display.display();  // Show splash screen
+    delay(1000);
+    
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1327_WHITE);
+    display.setContrast(255);  // Maximum brightness
+    
+    // Draw initial screen
+    display.setCursor(0, 0);
+    display.println("Initializing...");
+    display.display();
+}
+
+void updateDisplay() {
+    display.clearDisplay();
+    
+    // Draw border
+    display.drawRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SSD1327_WHITE);
+    
+    // Display IP with larger text
+    display.setTextSize(1);
+    display.setCursor(4, 4);
+    display.println("Server IP:");
+    display.setTextSize(1);
+    display.setCursor(4, 16);
+    display.println(serverIP);
+    
+    // Display position info
+    display.setTextSize(1);
+    display.setCursor(4, 40);
+    display.println("Position:");
+    display.setCursor(4, 52);
+    display.print("X:");
+    display.print(currentPosition.x, 1);
+    display.print(" Y:");
+    display.println(currentPosition.y, 1);
+    display.setCursor(4, 64);
+    display.print("Z:");
+    display.print(currentPosition.z);
+    display.print(" Yaw:");
+    display.println(currentPosition.yaw);
+    
+    // Update display
+    display.display();
+}
+
 void setup()
 {
-    Serial.begin(9600);
-
+    Serial.begin(115200);  // Match the new baud rate
+    delay(1000);  // Short delay for stability
+    
+    setupLCD();
+    
     // Create mutex and queues
     positionMutex = xSemaphoreCreateMutex();
     serialMutex = xSemaphoreCreateMutex();
@@ -245,7 +325,7 @@ void printCommands()
 void serialTask(void *parameter)
 {
     String inputString = "";
-
+    
     while (true)
     {
         if (Serial.available() > 0)
@@ -253,43 +333,50 @@ void serialTask(void *parameter)
             char inChar = (char)Serial.read();
             if (inChar == '\n')
             {
-                Command cmd;
-                parseCommand(inputString, &cmd);
-
-                // Debug print before sending to queue
-                if (xSemaphoreTake(serialMutex, portMAX_DELAY))
+                // Check if it's an IP address command
+                if (inputString.startsWith("IP:"))
                 {
-                    Serial.print("Sending command to queue - Type: ");
-                    Serial.print(cmd.type);
-                    Serial.print(", Value: ");
-                    Serial.println(cmd.value1);
-                    xSemaphoreGive(serialMutex);
-                }
-
-                // Route commands to appropriate queues
-                if (cmd.type == 'Z')
-                {
-                    xQueueSend(zCommandQueue, &cmd, portMAX_DELAY);
+                    serverIP = inputString.substring(3);
                     if (xSemaphoreTake(serialMutex, portMAX_DELAY))
                     {
-                        Serial.println("Z command sent to Z queue");
+                        Serial.print("Received server IP: ");
+                        Serial.println(serverIP);
+                        Serial.println("OK");  // Send acknowledgment
                         xSemaphoreGive(serialMutex);
                     }
-                }
-                else if (cmd.type == 'Y')
-                {
-                    xQueueSend(yawCommandQueue, &cmd, portMAX_DELAY);
-                    if (xSemaphoreTake(serialMutex, portMAX_DELAY))
-                    {
-                        Serial.println("Yaw command sent to yaw queue");
-                        xSemaphoreGive(serialMutex);
-                    }
+                    updateDisplay();  // Update display immediately
+                    lastDisplayUpdate = millis();  // Reset the display update timer
                 }
                 else
                 {
-                    xQueueSend(commandQueue, &cmd, portMAX_DELAY);
-                }
+                    // Your existing command parsing code
+                    Command cmd;
+                    parseCommand(inputString, &cmd);
 
+                    // Debug print before sending to queue
+                    if (xSemaphoreTake(serialMutex, portMAX_DELAY))
+                    {
+                        Serial.print("Sending command to queue - Type: ");
+                        Serial.print(cmd.type);
+                        Serial.print(", Value: ");
+                        Serial.println(cmd.value1);
+                        xSemaphoreGive(serialMutex);
+                    }
+
+                    // Route commands to appropriate queues
+                    if (cmd.type == 'Z')
+                    {
+                        xQueueSend(zCommandQueue, &cmd, portMAX_DELAY);
+                    }
+                    else if (cmd.type == 'Y')
+                    {
+                        xQueueSend(yawCommandQueue, &cmd, portMAX_DELAY);
+                    }
+                    else
+                    {
+                        xQueueSend(commandQueue, &cmd, portMAX_DELAY);
+                    }
+                }
                 inputString = "";
             }
             else
@@ -297,6 +384,15 @@ void serialTask(void *parameter)
                 inputString += inChar;
             }
         }
+        
+        // Update display periodically
+        unsigned long currentMillis = millis();
+        if (currentMillis - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL)
+        {
+            updateDisplay();
+            lastDisplayUpdate = currentMillis;
+        }
+        
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
