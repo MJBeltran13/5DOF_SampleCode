@@ -660,9 +660,17 @@ class ManualControl:
     def restart_connection(self):
         """Restart serial connection"""
         try:
+            # First disconnect and cleanup
+            self.robot.add_to_history("System", "Initiating restart sequence...")
+            
+            # Ensure manual control is temporarily paused
+            was_running = self.running
+            self.running = False
+            time.sleep(0.5)  # Give time for control loop to stop
+            
             # First disconnect
             self.robot.disconnect_serial()
-            time.sleep(1)  # Wait a bit
+            time.sleep(2)  # Wait longer to ensure port is fully released
             
             # Reset all positions to default values
             self.current_x = -86.87  # Initial X position
@@ -683,14 +691,34 @@ class ManualControl:
             # Then reconnect
             success = self.robot.connect_serial()
             if success:
-                # Move to initial position
-                self.robot.move_to_position(self.current_x, self.current_y)
+                time.sleep(1)  # Wait for connection to stabilize
+                
+                # Send reset commands
                 self.robot.send_command("z")  # Calibrate Z-axis
+                time.sleep(0.5)
+                
+                # Move to initial position
+                result = self.robot.move_to_position(self.current_x, self.current_y)
+                if not result.get('success', False):
+                    raise Exception("Failed to move to initial position")
+                    
                 self.robot.add_to_history("System", "Connection restarted successfully and positions reset")
+                
+                # Resume manual control if it was running
+                self.running = was_running
+                return True
             else:
                 self.robot.add_to_history("Error", "Failed to restart connection")
+                return False
+                
         except Exception as e:
-            self.robot.add_to_history("Error", f"Error during restart: {str(e)}")
+            error_msg = f"Error during restart: {str(e)}"
+            self.robot.add_to_history("Error", error_msg)
+            traceback.print_exc()  # Print full traceback for debugging
+            return False
+        finally:
+            # Ensure control loop is restored if needed
+            self.running = was_running
 
     def start(self):
         if self.joystick_count == 0:
@@ -786,7 +814,13 @@ class ManualControl:
                         self.running = False  # Stop manual control
                         break
                     elif event.button == self.BUTTON_RESTART:  # Button 8 for restart
-                        self.restart_connection()
+                        print("Restart button pressed - initiating restart sequence")
+                        if self.restart_connection():
+                            print("Restart successful")
+                            self.robot.add_to_history("System", "Restart completed successfully")
+                        else:
+                            print("Restart failed")
+                            self.robot.add_to_history("Error", "Restart failed - please check connection")
                     elif event.button == self.BUTTON_GRIPPER:  # Button 9 for gripper
                         self.robot.toggle_gripper(not self.robot.is_gripper_open)
                         self.robot.send_command("g")  # Send gripper toggle command
