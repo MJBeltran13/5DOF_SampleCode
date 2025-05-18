@@ -527,26 +527,44 @@ class ScaraRobot:
     def rotate_gripper(self, direction, degrees):
         """Rotate the gripper left or right by specified degrees"""
         try:
-            if direction == 'left':
-                response = self.send_command(f"gl{degrees}")
-                self.gripper_rotation = max(0, self.gripper_rotation - degrees)
-            elif direction == 'right':
-                response = self.send_command(f"gr{degrees}")
-                self.gripper_rotation = min(180, self.gripper_rotation + degrees)
-            else:
+            # Validate input parameters
+            if direction not in ['left', 'right']:
                 return {'success': False, 'message': "Invalid direction. Use 'left' or 'right'"}
+            if not isinstance(degrees, (int, float)) or degrees <= 0:
+                return {'success': False, 'message': "Degrees must be a positive number"}
+                
+            # Calculate new rotation value
+            new_rotation = self.gripper_rotation
+            if direction == 'left':
+                new_rotation = max(0, self.gripper_rotation - degrees)
+                command = f"gl{int(degrees)}"
+            else:  # right
+                new_rotation = min(180, self.gripper_rotation + degrees)
+                command = f"gr{int(degrees)}"
             
+            # Send command and get response
+            response = self.send_command(command)
             if response is None:
-                return {'success': False, 'message': self.last_error}
+                return {'success': False, 'message': self.last_error or "Failed to send rotation command"}
+            
+            # Update gripper rotation only if command was successful
+            self.gripper_rotation = new_rotation
+            
+            # Add to history for debugging
+            self.add_to_history("System", f"Gripper rotated {direction} by {degrees} degrees. New position: {new_rotation}")
             
             return {
                 'success': True,
                 'message': response,
-                'gripper_rotation': self.gripper_rotation
+                'gripper_rotation': self.gripper_rotation,
+                'direction': direction,
+                'degrees': degrees
             }
         except Exception as e:
-            self.last_error = f"Gripper rotation failed: {str(e)}"
-            return {'success': False, 'message': self.last_error}
+            error_msg = f"Gripper rotation failed: {str(e)}"
+            self.add_to_history("Error", error_msg)
+            self.last_error = error_msg
+            return {'success': False, 'message': error_msg}
 
     def toggle_manual_mode(self, enable):
         """Toggle manual control mode"""
@@ -807,9 +825,21 @@ class ManualControl:
                         self.robot.move_yaw(-self.yaw_increment)
                         self.robot.send_command(f"l{self.yaw_increment}")
                     elif event.button == self.BUTTON_LB:  # Rotate gripper left
-                        self.robot.rotate_gripper('left', 30)
+                        print("Rotating gripper left")
+                        result = self.robot.rotate_gripper('left', 30)
+                        if not result['success']:
+                            print(f"Failed to rotate gripper left: {result['message']}")
+                            self.robot.add_to_history("Error", f"Gripper rotation left failed: {result['message']}")
+                        else:
+                            print(f"Gripper rotated left to {result['gripper_rotation']} degrees")
                     elif event.button == self.BUTTON_RB:  # Rotate gripper right
-                        self.robot.rotate_gripper('right', 30)
+                        print("Rotating gripper right")
+                        result = self.robot.rotate_gripper('right', 30)
+                        if not result['success']:
+                            print(f"Failed to rotate gripper right: {result['message']}")
+                            self.robot.add_to_history("Error", f"Gripper rotation right failed: {result['message']}")
+                        else:
+                            print(f"Gripper rotated right to {result['gripper_rotation']} degrees")
                     elif event.button == self.BUTTON_BACK:
                         self.running = False  # Stop manual control
                         break
