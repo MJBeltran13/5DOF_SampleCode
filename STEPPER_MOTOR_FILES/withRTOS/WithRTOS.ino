@@ -102,8 +102,11 @@ const int STEP_PIN_YAW = 18;
 const int stepsPerRevolution = 200;
 const int microsteps = 16;
 const int totalSteps = stepsPerRevolution * microsteps;
-const unsigned long stepDelay = 1000;      // microseconds delay between steps
-const unsigned long yawStepDelay = 500000; // microseconds delay for yaw movement (1 second per half step, 2 seconds total per step)
+const unsigned long MIN_STEP_DELAY = 500;      // Minimum delay between steps (max speed)
+const unsigned long MAX_STEP_DELAY = 2000;     // Starting delay for acceleration
+const unsigned long ACCEL_STEPS = 50;          // Number of steps for acceleration/deceleration
+const unsigned long YAW_MIN_DELAY = 250000;    // Minimum delay for yaw movement
+const unsigned long YAW_MAX_DELAY = 500000;    // Maximum delay for yaw movement
 
 // Variables for Z control
 int currentPositionZ = 0;
@@ -119,6 +122,23 @@ void servoTask(void *parameter);
 void zAxisTask(void *parameter);
 void yawTask(void *parameter);
 void monitorTask(void *parameter);
+
+// Function to calculate step delay during acceleration/deceleration
+unsigned long calculateStepDelay(int currentStep, int totalSteps) {
+  // First phase: acceleration
+  if (currentStep < ACCEL_STEPS) {
+    return MAX_STEP_DELAY - (currentStep * (MAX_STEP_DELAY - MIN_STEP_DELAY) / ACCEL_STEPS);
+  }
+  // Last phase: deceleration
+  else if (currentStep > totalSteps - ACCEL_STEPS) {
+    int stepsFromEnd = totalSteps - currentStep;
+    return MAX_STEP_DELAY - (stepsFromEnd * (MAX_STEP_DELAY - MIN_STEP_DELAY) / ACCEL_STEPS);
+  }
+  // Middle phase: constant speed
+  else {
+    return MIN_STEP_DELAY;
+  }
+}
 
 void setup()
 {
@@ -315,9 +335,15 @@ void parseCommand(String input, Command *cmd)
     return;
   }
 
-  if (input == "reset")
+  if (input == "reset" || input == "r" || input == "z")  // Allow "reset", "r", or "z" for reset
   {
     cmd->type = 'R';
+    if (xSemaphoreTake(serialMutex, portMAX_DELAY))
+    {
+      Serial.println("Reset command received");
+      xSemaphoreGive(serialMutex);
+    }
+    return;
   }
   else if (input == "go")
   {
@@ -422,6 +448,9 @@ void servoTask(void *parameter)
     {
       switch (cmd.type)
       {
+      case 'R': // Reset
+        resetAll();
+        break;
       case 'A': // Angles
         moveToAngles(cmd.value1, cmd.value2);
         break;
@@ -492,47 +521,13 @@ void yawTask(void *parameter)
       {
         if (xSemaphoreTake(serialMutex, portMAX_DELAY))
         {
-          Serial.print("Yaw task executing movement of ");
+          Serial.print("Yaw movement: ");
           Serial.print(cmd.value1);
           Serial.println(" steps");
           xSemaphoreGive(serialMutex);
         }
 
-        // Set direction based on positive or negative value
-        digitalWrite(DIR_PIN_YAW, cmd.value1 > 0 ? HIGH : LOW);
-
-        // Move the specified number of steps
-        int steps = abs(cmd.value1);
-        for (int i = 0; i < steps; i++)
-        {
-          digitalWrite(STEP_PIN_YAW, HIGH);
-          delayMicroseconds(yawStepDelay);
-          digitalWrite(STEP_PIN_YAW, LOW);
-          delayMicroseconds(yawStepDelay);
-
-          // Print progress every 10 steps
-          if (i % 10 == 0 && xSemaphoreTake(serialMutex, portMAX_DELAY))
-          {
-            Serial.print("Yaw step ");
-            Serial.print(i + 1);
-            Serial.print(" of ");
-            Serial.println(steps);
-            xSemaphoreGive(serialMutex);
-          }
-        }
-
-        // Update position
-        if (xSemaphoreTake(positionMutex, portMAX_DELAY))
-        {
-          currentPosition.yaw += cmd.value1;
-          if (xSemaphoreTake(serialMutex, portMAX_DELAY))
-          {
-            Serial.print("New yaw position: ");
-            Serial.println(currentPosition.yaw);
-            xSemaphoreGive(serialMutex);
-          }
-          xSemaphoreGive(positionMutex);
-        }
+        moveStepsYaw(cmd.value1);
       }
     }
     vTaskDelay(pdMS_TO_TICKS(10));
@@ -647,7 +642,28 @@ void moveToAngles(float angle1, float angle2)
   angle1 = constrain(angle1, ELBOW_MIN_ANGLE, ELBOW_MAX_ANGLE);
   angle2 = constrain(angle2, BASE_MIN_ANGLE, BASE_MAX_ANGLE);
 
-  // Move servos
+  // Get current angles
+  float currentAngle1 = myservo1.read();
+  float currentAngle2 = myservo2.read();
+
+  // Calculate number of steps needed
+  const int STEPS = 20;  // Number of interpolation steps
+  float angle1Step = (angle1 - currentAngle1) / STEPS;
+  float angle2Step = (angle2 - currentAngle2) / STEPS;
+
+  // Gradually move to target position
+  for (int i = 0; i < STEPS; i++)
+  {
+    float nextAngle1 = currentAngle1 + angle1Step * (i + 1);
+    float nextAngle2 = currentAngle2 + angle2Step * (i + 1);
+    
+    myservo1.write(nextAngle1);
+    myservo2.write(nextAngle2);
+    
+    delay(20);  // Short delay between steps for smooth movement
+  }
+
+  // Ensure final position is exact
   myservo1.write(angle1);
   myservo2.write(angle2);
 
@@ -718,7 +734,6 @@ void moveToPosition(float x, float y)
 
 void moveStepsZ(int steps)
 {
-  // Print initial debug info
   if (xSemaphoreTake(serialMutex, portMAX_DELAY))
   {
     Serial.print("Z movement: ");
@@ -727,28 +742,16 @@ void moveStepsZ(int steps)
     xSemaphoreGive(serialMutex);
   }
 
-  // Calculate new position before moving
+  // Calculate new position and check limits
   if (xSemaphoreTake(positionMutex, portMAX_DELAY))
   {
     int newPosition = currentPosition.z + steps;
-
-    // Check if movement would exceed limits
-    if (newPosition < Z_MIN_POSITION)
+    if (newPosition < Z_MIN_POSITION || newPosition > Z_MAX_POSITION)
     {
       xSemaphoreGive(positionMutex);
       if (xSemaphoreTake(serialMutex, portMAX_DELAY))
       {
-        Serial.println("Error: Z movement exceeds lower limit");
-        xSemaphoreGive(serialMutex);
-      }
-      return;
-    }
-    if (newPosition > Z_MAX_POSITION)
-    {
-      xSemaphoreGive(positionMutex);
-      if (xSemaphoreTake(serialMutex, portMAX_DELAY))
-      {
-        Serial.println("Error: Z movement exceeds upper limit");
+        Serial.println("Error: Z movement exceeds limits");
         xSemaphoreGive(serialMutex);
       }
       return;
@@ -756,11 +759,11 @@ void moveStepsZ(int steps)
     xSemaphoreGive(positionMutex);
   }
 
-  // Set direction
   digitalWrite(DIR_PIN_Z, steps > 0 ? HIGH : LOW);
+  int absSteps = abs(steps);
 
-  // Move stepper
-  for (int i = 0; i < abs(steps); i++)
+  // Move with acceleration and deceleration
+  for (int i = 0; i < absSteps; i++)
   {
     // Check limit switch when moving up
     if (steps > 0 && currentPosition.z <= 0 && digitalRead(LIMIT_SWITCH_PIN_Z) == LOW)
@@ -778,10 +781,12 @@ void moveStepsZ(int steps)
       return;
     }
 
+    unsigned long stepDelay = calculateStepDelay(i, absSteps);
+    
     digitalWrite(STEP_PIN_Z, HIGH);
-    delayMicroseconds(stepDelay);
+    delayMicroseconds(stepDelay / 2);
     digitalWrite(STEP_PIN_Z, LOW);
-    delayMicroseconds(stepDelay);
+    delayMicroseconds(stepDelay / 2);
   }
 
   // Update position
@@ -810,13 +815,28 @@ void moveStepsYaw(int steps)
   }
 
   digitalWrite(DIR_PIN_YAW, steps > 0 ? HIGH : LOW);
+  int absSteps = abs(steps);
 
-  for (int i = 0; i < abs(steps); i++)
+  // Move with acceleration and deceleration
+  for (int i = 0; i < absSteps; i++)
   {
+    unsigned long stepDelay;
+    if (i < ACCEL_STEPS) {
+      // Acceleration
+      stepDelay = YAW_MAX_DELAY - (i * (YAW_MAX_DELAY - YAW_MIN_DELAY) / ACCEL_STEPS);
+    } else if (i > absSteps - ACCEL_STEPS) {
+      // Deceleration
+      int stepsFromEnd = absSteps - i;
+      stepDelay = YAW_MAX_DELAY - (stepsFromEnd * (YAW_MAX_DELAY - YAW_MIN_DELAY) / ACCEL_STEPS);
+    } else {
+      // Constant speed
+      stepDelay = YAW_MIN_DELAY;
+    }
+
     digitalWrite(STEP_PIN_YAW, HIGH);
-    delayMicroseconds(yawStepDelay);
+    delayMicroseconds(stepDelay / 2);
     digitalWrite(STEP_PIN_YAW, LOW);
-    delayMicroseconds(yawStepDelay);
+    delayMicroseconds(stepDelay / 2);
   }
 
   if (xSemaphoreTake(positionMutex, portMAX_DELAY))
@@ -838,19 +858,28 @@ void rotateGripper(int degrees)
   if (xSemaphoreTake(positionMutex, portMAX_DELAY))
   {
     int currentAngle = currentPosition.gripperRotation;
-    int newAngle = currentAngle + degrees;
-
-    // Constrain to valid range
-    newAngle = constrain(newAngle, ROTATION_MIN_ANGLE, ROTATION_MAX_ANGLE);
-
-    // Move to new position
-    myservo4.write(newAngle);
-    currentPosition.gripperRotation = newAngle;
+    int targetAngle = constrain(currentAngle + degrees, ROTATION_MIN_ANGLE, ROTATION_MAX_ANGLE);
+    
+    // Calculate steps for smooth movement
+    const int STEPS = 10;
+    float angleStep = (targetAngle - currentAngle) / (float)STEPS;
+    
+    // Gradually move to target position
+    for (int i = 0; i < STEPS; i++)
+    {
+      float nextAngle = currentAngle + angleStep * (i + 1);
+      myservo4.write(nextAngle);
+      delay(20);  // Short delay between steps
+    }
+    
+    // Ensure final position is exact
+    myservo4.write(targetAngle);
+    currentPosition.gripperRotation = targetAngle;
 
     if (xSemaphoreTake(serialMutex, portMAX_DELAY))
     {
       Serial.print("Gripper rotation: ");
-      Serial.print(newAngle);
+      Serial.print(targetAngle);
       Serial.println(" degrees");
       xSemaphoreGive(serialMutex);
     }
@@ -859,9 +888,21 @@ void rotateGripper(int degrees)
   }
 }
 
-// Function to open the gripper
+// Function to open the gripper with smooth movement
 void openGripper()
 {
+  const int STEPS = 10;
+  float currentAngle = myservo3.read();
+  float angleStep = (GRIPPER_OPEN_ANGLE - currentAngle) / STEPS;
+
+  for (int i = 0; i < STEPS; i++)
+  {
+    float nextAngle = currentAngle + angleStep * (i + 1);
+    myservo3.write(nextAngle);
+    delay(20);
+  }
+
+  // Ensure final position
   myservo3.write(GRIPPER_OPEN_ANGLE);
 
   if (xSemaphoreTake(positionMutex, portMAX_DELAY))
@@ -877,9 +918,21 @@ void openGripper()
   }
 }
 
-// Function to close the gripper
+// Function to close the gripper with smooth movement
 void closeGripper()
 {
+  const int STEPS = 10;
+  float currentAngle = myservo3.read();
+  float angleStep = (GRIPPER_CLOSED_ANGLE - currentAngle) / STEPS;
+
+  for (int i = 0; i < STEPS; i++)
+  {
+    float nextAngle = currentAngle + angleStep * (i + 1);
+    myservo3.write(nextAngle);
+    delay(20);
+  }
+
+  // Ensure final position
   myservo3.write(GRIPPER_CLOSED_ANGLE);
 
   if (xSemaphoreTake(positionMutex, portMAX_DELAY))
@@ -909,9 +962,9 @@ void calibrateToZero()
   while (digitalRead(LIMIT_SWITCH_PIN_Z) == HIGH)
   {
     digitalWrite(STEP_PIN_Z, HIGH);
-    delayMicroseconds(stepDelay);
+    delayMicroseconds(MAX_STEP_DELAY / 2);
     digitalWrite(STEP_PIN_Z, LOW);
-    delayMicroseconds(stepDelay);
+    delayMicroseconds(MAX_STEP_DELAY / 2);
   }
 
   // Move extra steps down
@@ -919,9 +972,9 @@ void calibrateToZero()
   for (int i = 0; i < extraSteps; i++)
   {
     digitalWrite(STEP_PIN_Z, HIGH);
-    delayMicroseconds(stepDelay);
+    delayMicroseconds(MAX_STEP_DELAY / 2);
     digitalWrite(STEP_PIN_Z, LOW);
-    delayMicroseconds(stepDelay);
+    delayMicroseconds(MAX_STEP_DELAY / 2);
   }
 
   // Set zero position
@@ -944,30 +997,93 @@ void calibrateToZero()
 
 void resetAll()
 {
-  // Reset Z position
+  if (xSemaphoreTake(serialMutex, portMAX_DELAY))
+  {
+    Serial.println("Starting system reset...");
+    xSemaphoreGive(serialMutex);
+  }
+
+  // First move servos to safe position
+  myservo1.write(90);  // Elbow
+  delay(500);
+  myservo2.write(90);  // Base
+  delay(500);
+  myservo3.write(GRIPPER_OPEN_ANGLE);  // Gripper open
+  delay(500);
+  myservo4.write(90);  // Gripper rotation
+  delay(500);
+
+  // Reset position variables
   if (xSemaphoreTake(positionMutex, portMAX_DELAY))
   {
-    currentPosition.z = 0;
-    currentPosition.yaw = 0;
-    currentPosition.angle1 = 90;
+    currentPosition.x = -86.87;  // Initial X position
+    currentPosition.y = 85.47;   // Initial Y position
+    currentPosition.z = 0;       // Reset Z position
+    currentPosition.yaw = 0;     // Reset Yaw position
+    currentPosition.angle1 = 90; // Reset servo angles
     currentPosition.angle2 = 90;
     currentPosition.isGripperOpen = true;
     currentPosition.gripperRotation = 90;
     xSemaphoreGive(positionMutex);
   }
 
-  // Reset servos to default positions
-  myservo1.write(90);                 // Elbow
-  myservo2.write(90);                 // Base
-  myservo3.write(GRIPPER_OPEN_ANGLE); // Gripper open
-  myservo4.write(90);                 // Gripper rotation
-
   // Calibrate Z axis
-  calibrateToZero();
+  if (xSemaphoreTake(serialMutex, portMAX_DELAY))
+  {
+    Serial.println("Starting Z-axis calibration...");
+    xSemaphoreGive(serialMutex);
+  }
+
+  digitalWrite(DIR_PIN_Z, HIGH); // set direction DOWN initially
+
+  // Move down until limit switch is triggered
+  while (digitalRead(LIMIT_SWITCH_PIN_Z) == HIGH)
+  {
+    digitalWrite(STEP_PIN_Z, HIGH);
+    delayMicroseconds(MAX_STEP_DELAY / 2);
+    digitalWrite(STEP_PIN_Z, LOW);
+    delayMicroseconds(MAX_STEP_DELAY / 2);
+  }
+
+  // Move extra steps down for safety
+  const int extraSteps = 100;
+  for (int i = 0; i < extraSteps; i++)
+  {
+    digitalWrite(STEP_PIN_Z, HIGH);
+    delayMicroseconds(MAX_STEP_DELAY / 2);
+    digitalWrite(STEP_PIN_Z, LOW);
+    delayMicroseconds(MAX_STEP_DELAY / 2);
+  }
+
+  // Update Z position
+  if (xSemaphoreTake(positionMutex, portMAX_DELAY))
+  {
+    currentPosition.z = 0;
+    xSemaphoreGive(positionMutex);
+  }
+
+  // Reset Yaw to center position
+  if (xSemaphoreTake(serialMutex, portMAX_DELAY))
+  {
+    Serial.println("Resetting Yaw position...");
+    xSemaphoreGive(serialMutex);
+  }
+
+  // Move to initial XY position
+  moveToPosition(currentPosition.x, currentPosition.y);
 
   if (xSemaphoreTake(serialMutex, portMAX_DELAY))
   {
-    Serial.println("System reset complete - All positions set to default");
+    Serial.println("System reset complete");
+    Serial.println("Current positions:");
+    Serial.print("X: "); Serial.print(currentPosition.x);
+    Serial.print(", Y: "); Serial.print(currentPosition.y);
+    Serial.print(", Z: "); Serial.print(currentPosition.z);
+    Serial.print(", Yaw: "); Serial.println(currentPosition.yaw);
+    Serial.print("Angles - Elbow: "); Serial.print(currentPosition.angle1);
+    Serial.print(", Base: "); Serial.println(currentPosition.angle2);
+    Serial.print("Gripper - Position: "); Serial.print(currentPosition.isGripperOpen ? "Open" : "Closed");
+    Serial.print(", Rotation: "); Serial.println(currentPosition.gripperRotation);
     xSemaphoreGive(serialMutex);
   }
 }

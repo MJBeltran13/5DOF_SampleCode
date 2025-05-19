@@ -482,25 +482,27 @@
         }
 
         .control-button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 8px;
             background-color: var(--primary);
             color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
             cursor: pointer;
             transition: var(--transition);
-            margin-right: 12px;
-            margin-bottom: 12px;
-            font-weight: 600;
-            font-size: 0.95rem;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
         }
 
         .control-button:hover {
             background-color: var(--primary-dark);
             transform: translateY(-2px);
+        }
+
+        #resetToHome {
+            background-color: var(--warning);
+        }
+
+        #resetToHome:hover {
+            background-color: #e85d04;
         }
 
         .instructions {
@@ -706,6 +708,7 @@
             <h3>Manual Control</h3>
             <div class="control-group">
                 <button id="toggleManual" class="control-button">Enable Manual Control</button>
+                <button id="resetToHome" class="control-button">Reset to Home</button>
                 <div id="manualStatus" class="status">Manual control: Disabled</div>
             </div>
             
@@ -735,6 +738,30 @@
     <script>
         let isGripperOpen = true;
         let gripperRotation = 90; // Initial gripper rotation angle
+
+        // Function to reset robot to home position
+        function resetToHome() {
+            $.ajax({
+                url: '/reset_to_home',
+                type: 'POST',
+                contentType: 'application/json',
+                success: function(response) {
+                    if (response.success) {
+                        showStatus('success', 'Reset to home completed successfully');
+                        // Update position display
+                        updatePositionDisplay();
+                    } else {
+                        showStatus('error', 'Failed to reset: ' + response.message);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    showStatus('error', 'Failed to reset: ' + error);
+                }
+            });
+        }
+
+        // Add event listener for reset to home button
+        document.getElementById('resetToHome').addEventListener('click', resetToHome);
 
         // Add auto-enable manual control after 2 seconds and auto-connect after 5 seconds
         window.addEventListener('load', function() {

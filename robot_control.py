@@ -621,6 +621,55 @@ class ScaraRobot:
         except Exception as e:
             return {'success': False, 'message': str(e)}
 
+    def reset_to_home(self):
+        """Reset robot to home position"""
+        try:
+            self.add_to_history("System", "Initiating reset to home sequence...")
+            
+            # First open gripper
+            self.toggle_gripper(True)
+            time.sleep(0.5)
+            
+            # Reset gripper rotation to center
+            current_rotation = self.gripper_rotation
+            if current_rotation > 90:
+                self.rotate_gripper('left', current_rotation - 90)
+            elif current_rotation < 90:
+                self.rotate_gripper('right', 90 - current_rotation)
+            time.sleep(0.5)
+            
+            # Move Z axis to zero position
+            self.send_command("z")  # Calibrate Z-axis
+            time.sleep(1)
+            
+            # Move to home X,Y position
+            result = self.move_to_position(self.current_x, self.current_y)
+            if not result.get('success', False):
+                raise Exception("Failed to move to home position")
+            
+            # Reset yaw to center
+            if self.current_yaw != 0:
+                steps = -self.current_yaw
+                self.move_yaw(steps)
+            
+            # Update all positions to home values
+            self.current_x = -86.87
+            self.current_y = 85.47
+            self.current_z = 0
+            self.current_yaw = 0
+            self.theta1 = 90
+            self.theta2 = 90
+            self.gripper_rotation = 90
+            self.is_gripper_open = True
+            
+            self.add_to_history("System", "Reset to home completed successfully")
+            return {'success': True, 'message': 'Reset to home completed successfully'}
+            
+        except Exception as e:
+            error_msg = f"Error during reset to home: {str(e)}"
+            self.add_to_history("Error", error_msg)
+            return {'success': False, 'message': error_msg}
+
 class ManualControl:
     def __init__(self, robot):
         self.robot = robot
@@ -978,6 +1027,14 @@ def toggle_manual_mode():
     data = request.get_json()
     result = robot.toggle_manual_mode(data.get('enable', False))
     return jsonify(result)
+
+@app.route('/reset_to_home', methods=['POST'])
+def reset_to_home():
+    try:
+        result = robot.reset_to_home()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 400
 
 if __name__ == '__main__':
     local_ip = get_local_ip()
