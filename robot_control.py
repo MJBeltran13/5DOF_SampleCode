@@ -61,8 +61,6 @@ class ScaraRobot:
         
         # Add initial status to history
         self.add_to_history("System", "Robot control initialized. Please connect to a serial port.")
-        
-        # Removed auto-connect on initialization
 
     def disconnect_serial(self):
         """Disconnect from serial port"""
@@ -920,22 +918,18 @@ if __name__ == '__main__':
     url = f"http://{local_ip}"
     print(f"Server running at: {url}")
     
-    # Open Chromium browser after a short delay to ensure server is running
-    def open_browser():
-        time.sleep(1.5)  # Wait for server to start
-        try:
-            # Try to open with Chromium (Raspberry Pi default)
-            webbrowser.get('chromium-browser').open(url)
-        except webbrowser.Error:
-            # Fall back to default browser if Chromium is not available
-            print("Chromium not found, trying default browser")
-            webbrowser.open(url)
-    
-    # Start browser in a separate thread
-    threading.Thread(target=open_browser).start()
+    # Open browser directly (no threading needed)
+    time.sleep(1.5)  # Wait for server to start
+    try:
+        # Try to open with Chromium (Raspberry Pi default)
+        webbrowser.get('chromium-browser').open(url)
+    except webbrowser.Error:
+        # Fall back to default browser if Chromium is not available
+        print("Chromium not found, trying default browser")
+        webbrowser.open(url)
     
     # Run the Flask server
-    app.run(host='0.0.0.0', port=5000, debug=True)  # Allow external access
+    app.run(host='0.0.0.0', port=5000, debug=False)  # Disable debug mode
 
 # how to run the code
 # python robot_control.py
