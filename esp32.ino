@@ -316,6 +316,7 @@ void printCommands()
         Serial.println("gr10            - rotate gripper right 10 degrees");
         Serial.println("go              - open gripper");
         Serial.println("gc              - close gripper");
+        Serial.println("reset           - reset and recalibrate all positions");
         Serial.println("p               - print positions");
         xSemaphoreGive(serialMutex);
         updateDisplay();
@@ -511,6 +512,9 @@ void servoTask(void *parameter)
                 break;
             case 'T': // Gripper rotation
                 rotateGripper(cmd.value1);
+                break;
+            case 'R': // Reset/Recalibrate
+                resetAll();
                 break;
             }
         }

@@ -644,9 +644,9 @@ class ManualControl:
         self.BUTTON_Y = 3  # Yaw left
         self.BUTTON_LB = 4  # Rotate gripper left
         self.BUTTON_RB = 5  # Rotate gripper right
-        self.BUTTON_BACK = 6
-        self.BUTTON_START = 7
-        self.BUTTON_RESTART = 8  # Restart connection
+        self.BUTTON_BACK = 6  # Restart connection
+        self.BUTTON_START = 7  # Exit manual mode
+        self.BUTTON_UNUSED = 8  # Unused now
         self.BUTTON_GRIPPER = 9  # Toggle gripper
         
         # Axis mappings
@@ -782,11 +782,11 @@ class ManualControl:
                         self.robot.rotate_gripper('left', 30)
                     elif event.button == self.BUTTON_RB:  # Rotate gripper right
                         self.robot.rotate_gripper('right', 30)
-                    elif event.button == self.BUTTON_BACK:
+                    elif event.button == self.BUTTON_BACK:  # Button 6 for restart
+                        self.restart_connection()
+                    elif event.button == self.BUTTON_START:  # Button 7 for exit
                         self.running = False  # Stop manual control
                         break
-                    elif event.button == self.BUTTON_RESTART:  # Button 8 for restart
-                        self.restart_connection()
                     elif event.button == self.BUTTON_GRIPPER:  # Button 9 for gripper
                         self.robot.toggle_gripper(not self.robot.is_gripper_open)
                         self.robot.send_command("g")  # Send gripper toggle command
